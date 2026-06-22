@@ -1,0 +1,5 @@
+# FV Institute analysis pipeline — runtime dependencies.
+# Everything else (HTTP server, LLM client, report HTML) is Python stdlib only.
+pandas>=2.2
+pyarrow>=15.0
+openpyxl>=3.1

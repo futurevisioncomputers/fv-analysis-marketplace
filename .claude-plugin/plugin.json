@@ -1,0 +1,9 @@
+{
+  "name": "fv-analysis",
+  "version": "1.0.0",
+  "description": "FV Institute 8-agent analytics pipeline: problem statement to PII-safe HTML report. LLM augments narrative; numbers stay deterministic.",
+  "author": {
+    "name": "Future Vision Computers Institute",
+    "url": "https://github.com/futurevisioncomputers"
+  }
+}

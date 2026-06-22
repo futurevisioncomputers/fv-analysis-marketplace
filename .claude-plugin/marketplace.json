@@ -1,0 +1,14 @@
+{
+  "name": "fv-analysis-marketplace",
+  "owner": {
+    "name": "Future Vision Computers Institute",
+    "email": "futurevisioncomputersinstitute@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "fv-analysis",
+      "source": "./",
+      "description": "Institute analytics pipeline + HTML report generator (8 agents, PII-safe, LLM-augmented narrative)."
+    }
+  ]
+}

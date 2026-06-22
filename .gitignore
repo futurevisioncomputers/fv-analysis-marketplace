@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+*.parquet
+*.xlsx
+report.html
+fv_report.html
+fv_report2.html
+fv_run.json
+monitoring_registry.json
