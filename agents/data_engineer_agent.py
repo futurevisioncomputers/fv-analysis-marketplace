@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -248,6 +248,116 @@ class DataEngineerAgent:
 
     # ------------------------------------------------------------------ run
 
+    def run_sources(
+        self,
+        brief: Any,
+        data_sources: Sequence[Mapping[str, Any]],
+        join_plan: Optional[Sequence[Mapping[str, Any]]] = None,
+        date_format: Optional[str] = None,
+        split_multivalue: bool = True,
+    ) -> JsonDict:
+        """Produce a DataPackage from multiple CSV / Excel-sheet sources.
+
+        Each source is cleaned independently with the same PII masking rules as
+        the legacy single-CSV path. Safe relationship joins are then applied to a
+        student-id-centered master frame; unjoined sources remain available in
+        `source_packages` and are summarized for the dashboard.
+        """
+        if not data_sources:
+            return self._blocked("No data sources provided.", row_count=0)
+
+        packages: List[JsonDict] = []
+        frames: Dict[str, pd.DataFrame] = {}
+        issues: List[str] = []
+        for source in data_sources:
+            name = str(source.get("name") or "source")
+            domain = str(source.get("domain") or self._infer_source_domain(source))
+            try:
+                raw = self._read_source_frame(source)
+            except Exception as exc:  # noqa: BLE001 - surface source read failure
+                issues.append(f"Skipped source '{name}': {exc}")
+                continue
+            if raw.empty:
+                issues.append(f"Skipped empty source '{name}'")
+                continue
+
+            package = self._clean_raw_frame(
+                brief, raw, self._source_output_name(source, name),
+                date_format=date_format,
+                split_multivalue=split_multivalue,
+                source_name=name,
+                source_domain=domain,
+            )
+            package["source_name"] = name
+            package["source_domain"] = domain
+            packages.append(package)
+            if package.get("status") == "ready":
+                frames[name] = pd.read_parquet(package["canonical_df_path"])
+            else:
+                issues.extend((package.get("quality_report") or {}).get("known_issues", []))
+
+        ready = [p for p in packages if p.get("status") == "ready"]
+        if not ready:
+            return self._blocked(
+                "No usable source remained after multi-source cleaning.",
+                row_count=0,
+                quality_extra={"known_issues": issues or ["All sources were blocked."]},
+            )
+
+        merged, relationships, join_issues = self._build_joined_frame(
+            frames, ready, join_plan or []
+        )
+        issues.extend(join_issues)
+        stem = "multi_source"
+        if data_sources:
+            first_path = data_sources[0].get("path_or_query") or data_sources[0].get("name") or stem
+            stem = os.path.splitext(os.path.basename(str(first_path)))[0] or stem
+        canonical_path = self._write_parquet(merged, f"{stem}_joined.csv")
+
+        source_summary = self._source_summary(ready, frames, relationships)
+        domain_metrics = self._domain_metrics(ready, frames)
+        canonical_columns = self._merged_roles(ready, merged)
+        return {
+            "status": "ready",
+            "canonical_df_path": canonical_path,
+            "row_count": len(merged),
+            "schema": {col: str(dtype) for col, dtype in merged.dtypes.items()},
+            "quality_report": {
+                "original_row_count": sum(
+                    (p.get("quality_report") or {}).get("original_row_count", 0)
+                    for p in ready
+                ),
+                "drop_count": sum(
+                    (p.get("quality_report") or {}).get("drop_count", 0)
+                    for p in ready
+                ),
+                "dropped_reasons": {},
+                "null_rates": self._null_rates(merged),
+                "deduplication_keys": [],
+                "known_issues": issues,
+            },
+            "canonical_columns": canonical_columns,
+            "time_dimensions": {
+                "event_date_sources": [
+                    c for c in ("event_date", "admission_date", "joining_date", "issue_date")
+                    if c in merged.columns
+                ],
+                "derived_columns": [
+                    c for c in (
+                        "event_date", "period_year", "period_month", "period_month_name",
+                        "period_quarter", "period_week", "period_day_name",
+                        "period_is_weekend",
+                    ) if c in merged.columns
+                ],
+            },
+            "multivalue_columns": {},
+            "source_packages": ready,
+            "source_summary": source_summary,
+            "relationship_summary": relationships,
+            "multi_source_summary": self._multi_source_summary(source_summary, relationships),
+            "domain_metrics": domain_metrics,
+        }
+
     def run(
         self,
         brief: Any,
@@ -283,6 +393,24 @@ class DataEngineerAgent:
         except Exception as exc:  # noqa: BLE001 - surface any parse failure to orchestrator
             return self._blocked(f"Failed to read CSV: {exc}", row_count=0)
 
+        return self._clean_raw_frame(
+            brief, raw, csv_path, date_format=date_format,
+            split_multivalue=split_multivalue,
+            source_name="primary", source_domain="single",
+        )
+
+    def _clean_raw_frame(
+        self,
+        brief: Any,
+        raw: pd.DataFrame,
+        source_path: str,
+        date_format: Optional[str] = None,
+        split_multivalue: bool = True,
+        source_name: Optional[str] = None,
+        source_domain: Optional[str] = None,
+    ) -> JsonDict:
+        """Clean an already-loaded dataframe using the legacy single-source flow."""
+
         original_rows = len(raw)
         if original_rows == 0:
             return self._blocked("Source CSV has zero rows.", row_count=0)
@@ -315,6 +443,11 @@ class DataEngineerAgent:
         if split_multivalue:
             multivalue_columns = self._split_multivalue(df, roles, known_issues)
 
+        if source_name:
+            df["source_name"] = source_name
+        if source_domain:
+            df["source_domain"] = source_domain
+
         # Coalesce all date roles into one per-row event_date, then derive the
         # report time columns and drop only rows with no date at all.
         event_date = self._build_event_date(df, roles)
@@ -340,7 +473,7 @@ class DataEngineerAgent:
         canonical_columns = self._mask_pii(df, roles, known_issues)
         dedup_keys = self._dedupe(df, roles, known_issues)
 
-        canonical_path = self._write_parquet(df, csv_path)
+        canonical_path = self._write_parquet(df, source_path)
 
         return {
             "status": "ready",
@@ -1004,6 +1137,12 @@ class DataEngineerAgent:
             key_cols = [roles["receipt_id"]]
         elif "certificate_number" in roles:
             key_cols = [roles["certificate_number"]]
+        elif (
+            "student_id" in roles
+            and "source_domain" in df.columns
+            and set(df["source_domain"].dropna().astype(str)).issubset({"finance"})
+        ):
+            return []
         else:
             key_cols = [
                 roles[r]
@@ -1018,6 +1157,353 @@ class DataEngineerAgent:
         if removed:
             issues.append(f"Removed {removed} duplicate row(s) on {key_cols}")
         return key_cols
+
+    # ---------------------------------------------------------- multi-source
+
+    def _read_source_frame(self, source: Mapping[str, Any]) -> pd.DataFrame:
+        typ = str(source.get("type") or "csv").lower()
+        path = source.get("path_or_query") or source.get("path")
+        if typ == "csv":
+            if not path or not os.path.exists(str(path)):
+                raise FileNotFoundError(f"CSV not found: {path!r}")
+            return pd.read_csv(path)
+        if typ == "excel_sheet":
+            if not path or not os.path.exists(str(path)):
+                raise FileNotFoundError(f"Excel workbook not found: {path!r}")
+            sheet = source.get("sheet_name") or source.get("name")
+            return pd.read_excel(path, sheet_name=sheet, engine="openpyxl")
+        raise ValueError(f"Unsupported source type: {typ}")
+
+    def _source_output_name(self, source: Mapping[str, Any], name: str) -> str:
+        base = source.get("path_or_query") or source.get("path") or name
+        root, ext = os.path.splitext(str(base))
+        safe = re.sub(r"\W+", "_", str(name)).strip("_") or "source"
+        return f"{root}_{safe}{ext or '.csv'}"
+
+    def _build_joined_frame(
+        self,
+        frames: Mapping[str, pd.DataFrame],
+        packages: Sequence[JsonDict],
+        join_plan: Sequence[Mapping[str, Any]],
+    ) -> Tuple[pd.DataFrame, JsonDict, List[str]]:
+        package_by_name = {p.get("source_name"): p for p in packages}
+        issues: List[str] = []
+        accepted: List[JsonDict] = []
+        rejected: List[JsonDict] = []
+        master_name = self._choose_master_source(packages)
+        master = frames[master_name].copy()
+        joined_sources = {master_name}
+
+        for package in packages:
+            name = package.get("source_name")
+            if not name or name == master_name or name not in frames:
+                continue
+            right = frames[name].copy()
+            relation = self._join_relation_for(master_name, name, join_plan)
+            domain = package.get("source_domain")
+            master_roles = package_by_name[master_name].get("canonical_columns") or {}
+            right_roles = package.get("canonical_columns") or {}
+
+            joined = False
+            if "student_id" in master_roles and "student_id" in right_roles:
+                master, detail = self._left_join_source(
+                    master, right, master_roles["student_id"], right_roles["student_id"],
+                    name, domain, relation or {"confidence": "high", "keys": ["student_id"]},
+                )
+                joined = detail["status"] == "accepted"
+            elif str(domain).startswith("admission"):
+                master, detail = self._join_admission_identity(
+                    master, right, master_roles, right_roles, name, relation
+                )
+                joined = detail["status"] == "accepted"
+            else:
+                detail = {
+                    "status": "rejected", "left_source": master_name,
+                    "right_source": name, "reason": "no high-confidence key",
+                }
+
+            if joined:
+                accepted.append(detail)
+                joined_sources.add(name)
+            else:
+                rejected.append(detail)
+                issues.append(
+                    f"Source '{name}' not joined: {detail.get('reason', 'unsafe join')}"
+                )
+
+        if "source_name" not in master.columns:
+            master["source_name"] = master_name
+        if "source_domain" not in master.columns:
+            master["source_domain"] = package_by_name[master_name].get("source_domain")
+
+        relationships = {
+            "master_source": master_name,
+            "accepted": accepted,
+            "rejected": rejected,
+            "joined_sources": sorted(joined_sources),
+            "unjoined_sources": [
+                p.get("source_name") for p in packages
+                if p.get("source_name") not in joined_sources
+            ],
+        }
+        return master, relationships, issues
+
+    def _choose_master_source(self, packages: Sequence[JsonDict]) -> str:
+        def score(pkg):
+            roles = pkg.get("canonical_columns") or {}
+            domain = str(pkg.get("source_domain") or "")
+            s = 0
+            if "student_id" in roles:
+                s += 100
+            if domain in ("student", "master", "student_master"):
+                s += 50
+            if domain in ("finance", "certificate"):
+                s -= 20
+            if domain.startswith("admission"):
+                s -= 10
+            return s
+
+        return str(max(packages, key=score).get("source_name"))
+
+    def _join_relation_for(
+        self, left: str, right: str, join_plan: Sequence[Mapping[str, Any]]
+    ) -> Optional[Mapping[str, Any]]:
+        for rel in join_plan:
+            if rel.get("left_source") == left and rel.get("right_source") == right:
+                return rel
+            if rel.get("right_source") == left and rel.get("left_source") == right:
+                return rel
+        return None
+
+    def _left_join_source(
+        self,
+        left: pd.DataFrame,
+        right: pd.DataFrame,
+        left_key: str,
+        right_key: str,
+        right_name: str,
+        right_domain: Optional[str],
+        relation: Mapping[str, Any],
+    ) -> Tuple[pd.DataFrame, JsonDict]:
+        detail = {
+            "status": "rejected", "left_source": "master", "right_source": right_name,
+            "keys": [left_key], "confidence": relation.get("confidence", "high"),
+        }
+        if left_key not in left.columns or right_key not in right.columns:
+            detail["reason"] = "join key missing after cleaning"
+            return left, detail
+
+        left_keys = left[left_key].dropna()
+        right_keys = right[right_key].dropna()
+        right_key_values = set(right_keys.astype(str))
+        left_key_values = set(left_keys.astype(str))
+        overlap = left_key_values & right_key_values
+        if not overlap:
+            detail["reason"] = "no overlapping join key values"
+            detail["cardinality"] = "no_overlap"
+            return left, detail
+        left_dup = bool(left_keys.duplicated().any())
+        right_dup = bool(right_keys.duplicated().any())
+        if left_dup and right_dup:
+            detail["reason"] = "many-to-many join rejected"
+            detail["cardinality"] = "many_to_many"
+            return left, detail
+
+        before = len(left)
+        prepared, aggregated = self._prepare_right_for_join(right, right_key, right_name)
+        rename = {right_key: left_key}
+        prepared = prepared.rename(columns=rename)
+        merged = left.merge(prepared, on=left_key, how="left")
+        if len(merged) > before:
+            detail["reason"] = "row multiplication rejected"
+            detail["expected_row_count"] = before
+            detail["actual_row_count"] = len(merged)
+            return left, detail
+
+        detail.update({
+            "status": "accepted",
+            "right_domain": right_domain,
+            "cardinality": "many_to_one" if aggregated else "one_to_one",
+            "left_unmatched": int((~left[left_key].astype(str).isin(right_key_values)).sum()),
+            "right_unmatched": int((~right[right_key].astype(str).isin(left_key_values)).sum()),
+            "aggregated_right_duplicates": aggregated,
+        })
+        return merged, detail
+
+    def _prepare_right_for_join(
+        self, right: pd.DataFrame, key: str, source_name: str
+    ) -> Tuple[pd.DataFrame, bool]:
+        safe = re.sub(r"\W+", "_", str(source_name)).strip("_").lower() or "source"
+        renamed = right.copy()
+        renamed = renamed.rename(
+            columns={c: (c if c == key else f"{safe}__{c}") for c in renamed.columns}
+        )
+        if not renamed[key].dropna().duplicated().any():
+            return renamed, False
+
+        aggregations = {}
+        for col in renamed.columns:
+            if col == key:
+                continue
+            if pd.api.types.is_bool_dtype(renamed[col]):
+                aggregations[col] = "max"
+            elif pd.api.types.is_numeric_dtype(renamed[col]):
+                aggregations[col] = "sum"
+            elif pd.api.types.is_datetime64_any_dtype(renamed[col]):
+                aggregations[col] = "max"
+            else:
+                aggregations[col] = "first"
+        return renamed.groupby(key, as_index=False).agg(aggregations), True
+
+    def _join_admission_identity(
+        self,
+        left: pd.DataFrame,
+        right: pd.DataFrame,
+        left_roles: Mapping[str, str],
+        right_roles: Mapping[str, str],
+        right_name: str,
+        relation: Optional[Mapping[str, Any]],
+    ) -> Tuple[pd.DataFrame, JsonDict]:
+        for role in ("student_mobile", "email", "name"):
+            lcol, rcol = left_roles.get(role), right_roles.get(role)
+            if lcol and rcol and lcol in left.columns and rcol in right.columns:
+                if not left[lcol].dropna().duplicated().any() and not right[rcol].dropna().duplicated().any():
+                    merged, detail = self._left_join_source(
+                        left, right, lcol, rcol, right_name, "admission",
+                        relation or {"confidence": "high", "keys": [role]},
+                    )
+                    detail["match_method"] = role
+                    return merged, detail
+
+        composite_roles = ("name", "course", "branch")
+        if all(left_roles.get(r) and right_roles.get(r) for r in composite_roles):
+            left_key = "__admission_identity_key"
+            right_key = "__admission_identity_key"
+            left = left.copy()
+            right = right.copy()
+            left[left_key] = self._composite_key(left, [left_roles[r] for r in composite_roles])
+            right[right_key] = self._composite_key(right, [right_roles[r] for r in composite_roles])
+            if not left[left_key].dropna().duplicated().any() and not right[right_key].dropna().duplicated().any():
+                merged, detail = self._left_join_source(
+                    left, right, left_key, right_key, right_name, "admission",
+                    relation or {"confidence": "high", "keys": list(composite_roles)},
+                )
+                detail["match_method"] = "name_course_branch"
+                return merged.drop(columns=[left_key], errors="ignore"), detail
+
+        return left, {
+            "status": "rejected", "left_source": "master", "right_source": right_name,
+            "reason": "no unique high-confidence admission identity match",
+            "confidence": "low",
+        }
+
+    @staticmethod
+    def _composite_key(df: pd.DataFrame, cols: Sequence[str]) -> pd.Series:
+        parts = []
+        for col in cols:
+            parts.append(df[col].astype(str).str.strip().str.lower().fillna(""))
+        out = parts[0]
+        for part in parts[1:]:
+            out = out + "|" + part
+        return out.replace({"||": np.nan, "nan|nan|nan": np.nan})
+
+    def _source_summary(
+        self,
+        packages: Sequence[JsonDict],
+        frames: Mapping[str, pd.DataFrame],
+        relationships: Mapping[str, Any],
+    ) -> List[JsonDict]:
+        joined = set(relationships.get("joined_sources") or [])
+        summary = []
+        for pkg in packages:
+            name = pkg.get("source_name")
+            frame = frames.get(name)
+            summary.append({
+                "name": name,
+                "domain": pkg.get("source_domain"),
+                "row_count": pkg.get("row_count"),
+                "column_count": len(frame.columns) if frame is not None else 0,
+                "join_status": "joined" if name in joined else "standalone",
+                "canonical_df_path": pkg.get("canonical_df_path"),
+            })
+        return summary
+
+    def _multi_source_summary(
+        self, source_summary: Sequence[Mapping[str, Any]], relationships: Mapping[str, Any]
+    ) -> JsonDict:
+        domains = sorted({str(s.get("domain")) for s in source_summary if s.get("domain")})
+        return {
+            "source_count": len(source_summary),
+            "domains": domains,
+            "joined_count": len(relationships.get("joined_sources") or []),
+            "unjoined_count": len(relationships.get("unjoined_sources") or []),
+            "accepted_join_count": len(relationships.get("accepted") or []),
+            "rejected_join_count": len(relationships.get("rejected") or []),
+        }
+
+    def _domain_metrics(
+        self, packages: Sequence[JsonDict], frames: Mapping[str, pd.DataFrame]
+    ) -> JsonDict:
+        metrics: JsonDict = {}
+        for pkg in packages:
+            name = pkg.get("source_name")
+            domain = str(pkg.get("source_domain") or "unknown")
+            frame = frames.get(name)
+            roles = pkg.get("canonical_columns") or {}
+            if frame is None:
+                continue
+            bucket = metrics.setdefault(domain, {"sources": [], "metrics": {}})
+            bucket["sources"].append(name)
+            vals = bucket["metrics"]
+            if domain == "finance":
+                amount = roles.get("amount")
+                pending = roles.get("pending")
+                status = roles.get("status")
+                if amount in frame:
+                    vals["total_fees"] = vals.get("total_fees", 0) + float(frame[amount].sum(skipna=True))
+                if pending in frame:
+                    vals["pending_fees"] = vals.get("pending_fees", 0) + float(frame[pending].sum(skipna=True))
+                    vals["full_paid_count"] = vals.get("full_paid_count", 0) + int((frame[pending].fillna(0) == 0).sum())
+                elif status in frame:
+                    vals["full_paid_count"] = vals.get("full_paid_count", 0) + int(
+                        frame[status].astype(str).str.contains("full paid", case=False, na=False).sum()
+                    )
+            elif domain == "certificate":
+                pending_col = "is_certificate_pending"
+                if pending_col in frame:
+                    pending_count = int(frame[pending_col].fillna(False).sum())
+                    vals["certificate_pending"] = vals.get("certificate_pending", 0) + pending_count
+                    vals["certificates_issued"] = vals.get("certificates_issued", 0) + int(len(frame) - pending_count)
+            elif domain in ("student", "product"):
+                vals["enrollment_count"] = vals.get("enrollment_count", 0) + int(len(frame))
+            elif domain in ("admission", "marketing"):
+                vals["lead_count"] = vals.get("lead_count", 0) + int(len(frame))
+        return metrics
+
+    def _merged_roles(self, packages: Sequence[JsonDict], merged: pd.DataFrame) -> Dict[str, str]:
+        roles: Dict[str, str] = {}
+        for pkg in packages:
+            source = re.sub(r"\W+", "_", str(pkg.get("source_name"))).strip("_").lower()
+            for role, col in (pkg.get("canonical_columns") or {}).items():
+                candidates = [col, f"{source}__{col}"]
+                for candidate in candidates:
+                    if candidate in merged.columns and role not in roles:
+                        roles[role] = candidate
+        return roles
+
+    def _infer_source_domain(self, source: Mapping[str, Any]) -> str:
+        text = " ".join(
+            str(source.get(k) or "") for k in ("name", "sheet_name", "path_or_query", "path")
+        ).lower()
+        if any(w in text for w in ("fee", "payment", "finance", "invoice")):
+            return "finance"
+        if "certificate" in text:
+            return "certificate"
+        if any(w in text for w in ("student", "master")):
+            return "student"
+        if any(w in text for w in ("admission", "lead", "enquiry", "marketing")):
+            return "admission"
+        return "unknown"
 
     # ---------------------------------------------------------------- output
 

@@ -1,6 +1,6 @@
 ---
-description: Run the FV Institute analytics pipeline on a sheet and produce an HTML report
-argument-hint: <csv-path> [business question]
+description: Run the FV Institute analytics pipeline on one or more sheets and produce an HTML dashboard
+argument-hint: <csv-or-xlsx-path> [business question]
 allowed-tools: Bash, Read
 ---
 
@@ -18,6 +18,8 @@ Steps:
 2. Run the pipeline via the plugin's CLI (this masks PII, analyzes, and writes the
    report). Use the plugin root so it works on any PC:
 
+   For CSV:
+
    ```bash
    python "${CLAUDE_PLUGIN_ROOT}/scripts/run_pipeline.py" \
      --csv "<sheet path>" \
@@ -25,8 +27,29 @@ Steps:
      --out "fv_report.html"
    ```
 
+   For Excel workbooks with multiple sheets:
+
+   ```bash
+   python "${CLAUDE_PLUGIN_ROOT}/scripts/run_pipeline.py" \
+     --excel "<workbook.xlsx>" \
+     --question "<question>" \
+     --out "fv_report.html"
+   ```
+
+   For multiple CSV exports:
+
+   ```bash
+   python "${CLAUDE_PLUGIN_ROOT}/scripts/run_pipeline.py" \
+     --source "student=<student.csv>" \
+     --source "fee=<fee.csv>" \
+     --source "certificate=<certificate.csv>" \
+     --question "<question>" \
+     --out "fv_report.html"
+   ```
+
 3. Report the result to the user: the absolute path of `fv_report.html`, the number
-   of questions answered/skipped, and the monitoring health line the CLI prints.
+   of questions answered/skipped, monitoring health, and any source/join summary
+   line the CLI prints.
    Tell them to open the HTML file in a browser. Do NOT paste the raw HTML into the
    chat.
 

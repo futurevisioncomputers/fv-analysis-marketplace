@@ -4,8 +4,9 @@ argument-hint: <run-json-path> [output.html]
 allowed-tools: Bash, Read
 ---
 
-Regenerate the FV Institute HTML report from a previously saved run JSON, without
-re-running the pipeline. Use this to restyle/re-export a past analysis cheaply.
+Regenerate the FV Institute multi-page HTML dashboard from a previously saved
+run JSON, without re-running the pipeline. Use this to restyle/re-export a past
+analysis cheaply.
 
 User input: `$ARGUMENTS`
 
@@ -25,7 +26,9 @@ Steps:
    ```
 
 3. Tell the user the absolute path of the written HTML and to open it in a browser.
-   Do not paste the HTML into the chat.
+   The report includes connected pages for overview, financial, operational,
+   product/course performance, branch/store performance, and sales/faculty
+   performance. Do not paste the HTML into the chat.
 
 4. If the JSON is missing or malformed, relay the error. To produce a run JSON,
    run `fv-analyze` (or the CLI with `--json run.json`).

@@ -33,7 +33,7 @@ Honesty / boundary notes:
 from __future__ import annotations
 
 import os
-from typing import Any, Callable, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from .problem_definition_agent import ProblemDefinitionAgent
 from .dynamic_data_processor_agent import DynamicDataProcessorAgent
@@ -99,7 +99,8 @@ class OrchestratorAgent:
     def run(
         self,
         payload: Any,
-        csv_path: str,
+        csv_path: str = "",
+        data_sources: Optional[Sequence[Mapping[str, Any]]] = None,
         registry_path: Optional[str] = None,
         date_format: Optional[str] = None,
         max_questions: Optional[int] = None,
@@ -109,7 +110,8 @@ class OrchestratorAgent:
 
         Args:
             payload: user_question string or /goal JSON (Agent 1 input).
-            csv_path: source CSV for Agent 2.
+            csv_path: legacy single source CSV for Agent 2.
+            data_sources: optional multi-source list for CSV / Excel-sheet runs.
             registry_path: JSON hook registry for Agent 7. Defaults to a path
                 beside the CSV; pass an explicit path to persist across runs.
             date_format: optional date hint forwarded to Agent 2.
@@ -153,13 +155,11 @@ class OrchestratorAgent:
 
         # --- Stage 2.5: Dynamic Data Processor (NEW) -----------------------
         state["stage_reached"] = "dynamic_data_processor"
-        # Wrap single csv_path as a data source; can be extended to multi-source
-        # The Dynamic Data Processor reads `path_or_query` (see _validate_csv);
-        # supply both keys so either contract is satisfied.
-        data_sources = [
-            {"name": "primary", "type": "csv", "path": csv_path,
-             "path_or_query": csv_path}
-        ]
+        if data_sources is None:
+            data_sources = [
+                {"name": "primary", "type": "csv", "path": csv_path,
+                 "path_or_query": csv_path, "domain": "single"}
+            ]
         data_source_plan = self.dynamic_data_processor.run(brief, data_sources)
         if data_source_plan.get("status") == "blocked":
             emit("1", "Problem Definition", "done", self._stage_summary("1", state))
@@ -179,7 +179,14 @@ class OrchestratorAgent:
 
         # --- Stage 2: Data Engineer -----------------------------------------
         state["stage_reached"] = "data_engineer"
-        data_package = self.data_engineer.run(adapted_brief, csv_path, date_format=date_format)
+        if len(data_sources) > 1 or any(s.get("type") == "excel_sheet" for s in data_sources):
+            data_package = self.data_engineer.run_sources(
+                adapted_brief, data_sources,
+                join_plan=data_source_plan.get("join_plan") or [],
+                date_format=date_format,
+            )
+        else:
+            data_package = self.data_engineer.run(adapted_brief, csv_path, date_format=date_format)
         state["data_package"] = self._slim_package(data_package)
         if data_package.get("status") == "blocked":
             reason = (data_package.get("quality_report") or {}).get("known_issues")
@@ -238,7 +245,9 @@ class OrchestratorAgent:
 
         # --- Stage 7: Monitoring --------------------------------------------
         state["stage_reached"] = "monitoring"
-        registry_path = registry_path or self._default_registry_path(csv_path)
+        registry_path = registry_path or self._default_registry_path(
+            csv_path or self._first_source_path(data_sources)
+        )
         hooks = collected_hooks + self._alert_hooks(brief)
         self.monitoring.register(hooks, registry_path)
         monitoring = self.monitoring.evaluate(
@@ -368,6 +377,17 @@ class OrchestratorAgent:
                 "row_count": (state["data_package"] or {}).get("row_count"),
                 "known_issues": (state["data_package"] or {}).get("known_issues", []),
             },
+            "multi_source_summary": (state["data_package"] or {}).get(
+                "multi_source_summary", {}
+            ),
+            "sources": (state["data_package"] or {}).get("source_summary", []),
+            "relationships": (state["data_package"] or {}).get(
+                "relationship_summary", {}
+            ),
+            "domain_metrics": (state["data_package"] or {}).get("domain_metrics", {}),
+            "unjoined_sources": ((state["data_package"] or {}).get(
+                "relationship_summary", {}
+            ) or {}).get("unjoined_sources", []),
             "agent_summaries": self._summarize_agents(state),
         }
 
@@ -605,11 +625,22 @@ class OrchestratorAgent:
             "canonical_df_path": data_package.get("canonical_df_path"),
             "canonical_columns": data_package.get("canonical_columns"),
             "known_issues": qr.get("known_issues", []),
+            "source_summary": data_package.get("source_summary", []),
+            "relationship_summary": data_package.get("relationship_summary", {}),
+            "multi_source_summary": data_package.get("multi_source_summary", {}),
+            "domain_metrics": data_package.get("domain_metrics", {}),
         }
 
     def _default_registry_path(self, csv_path: str) -> str:
         base = os.path.dirname(os.path.abspath(csv_path)) if csv_path else os.getcwd()
         return os.path.join(base, "monitoring_registry.json")
+
+    @staticmethod
+    def _first_source_path(data_sources: Optional[Sequence[Mapping[str, Any]]]) -> str:
+        if not data_sources:
+            return ""
+        first = data_sources[0]
+        return str(first.get("path_or_query") or first.get("path") or "")
 
     def _halt(self, state: JsonDict, status: str, message: str,
               detail: Any = None) -> JsonDict:

@@ -28,6 +28,7 @@ Outputs:
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -238,6 +239,8 @@ class DynamicDataProcessorAgent:
         # Parse based on type
         if source_type == "csv":
             return self._validate_csv(name, source)
+        elif source_type == "excel_sheet":
+            return self._validate_excel_sheet(name, source)
         elif source_type == "json":
             return self._validate_json(name, source)
         else:
@@ -259,9 +262,12 @@ class DynamicDataProcessorAgent:
             return {
                 "name": name,
                 "type": "csv",
+                "domain": source.get("domain") or self._infer_domain(name, list(df.columns)),
+                "path_or_query": path,
                 "status": "valid",
                 "row_count": len(df),
                 "column_count": len(df.columns),
+                "columns": list(df.columns),
                 "detected_roles": schema,
                 "missing_columns": self._check_missing_columns(
                     name, list(df.columns)
@@ -283,6 +289,42 @@ class DynamicDataProcessorAgent:
                 "error": f"CSV read error: {str(e)}",
             }
 
+    def _validate_excel_sheet(self, name: str, source: Mapping[str, Any]) -> JsonDict:
+        """Validate one Excel worksheet source."""
+        path = source.get("path_or_query")
+        sheet = source.get("sheet_name") or name
+        if not path:
+            return {"name": name, "status": "blocked", "error": "No workbook path provided"}
+        try:
+            df = pd.read_excel(path, sheet_name=sheet, nrows=100, engine="openpyxl")
+            if df.empty:
+                return {"name": name, "status": "blocked", "error": "Sheet is empty"}
+            schema = self._infer_schema(df)
+            return {
+                "name": name,
+                "type": "excel_sheet",
+                "domain": source.get("domain") or self._infer_domain(name, list(df.columns)),
+                "path_or_query": path,
+                "sheet_name": sheet,
+                "status": "valid",
+                "row_count": len(df),
+                "column_count": len(df.columns),
+                "columns": list(df.columns),
+                "detected_roles": schema,
+                "missing_columns": self._check_missing_columns(name, list(df.columns)),
+                "extra_columns": self._check_extra_columns(name, list(df.columns)),
+                "data_quality": {
+                    "null_pattern": (df.isnull().sum() / max(len(df), 1)).to_dict(),
+                    "duplicate_keys": self._scan_duplicates(df, name),
+                },
+            }
+        except Exception as e:
+            return {
+                "name": name,
+                "status": "blocked",
+                "error": f"Excel sheet read error: {str(e)}",
+            }
+
     def _validate_json(self, name: str, source: Mapping[str, Any]) -> JsonDict:
         """Validate a JSON source (stub for MVP)."""
         path = source.get("path_or_query")
@@ -302,9 +344,12 @@ class DynamicDataProcessorAgent:
             return {
                 "name": name,
                 "type": "json",
+                "domain": source.get("domain") or self._infer_domain(name, list(df.columns)),
+                "path_or_query": path,
                 "status": "valid",
                 "row_count": len(df),
                 "column_count": len(df.columns),
+                "columns": list(df.columns),
                 "detected_roles": schema,
                 "missing_columns": self._check_missing_columns(
                     name, list(df.columns)
@@ -422,45 +467,96 @@ class DynamicDataProcessorAgent:
         sources: Sequence[JsonDict],
         brief: Mapping[str, Any],
     ) -> List[JsonDict]:
-        """Propose join strategies across multiple sources."""
+        """Propose conservative join strategies across multiple sources."""
         if len(sources) <= 1:
             return []
 
         joins = []
-        source_names = [s.get("name") for s in sources]
-
-        # For now, propose left joins on common keys
-        for i, left_src in enumerate(source_names[:-1]):
-            right_src = source_names[i + 1]
-            join_keys = self._find_common_keys(sources[i], sources[i + 1])
-
-            if join_keys:
-                joins.append(
-                    {
-                        "left_source": left_src,
-                        "right_source": right_src,
-                        "join_type": "left",
-                        "keys": join_keys,
-                        "expected_row_count": sources[i].get("row_count"),
-                        "risk": "low" if len(join_keys) > 1 else "medium",
-                    }
-                )
+        master = self._choose_master_source(sources)
+        for src in sources:
+            if src.get("name") == master.get("name"):
+                continue
+            candidate = self._relationship_candidate(master, src)
+            if candidate:
+                joins.append(candidate)
 
         return joins
 
     def _find_common_keys(self, src1: JsonDict, src2: JsonDict) -> List[str]:
         """Find common keys between two sources."""
-        # Stub: assume student_id is always common
-        keys = []
-        if all(
-            "student_id" in key
-            for key in [
-                src1.get("detected_roles", {}),
-                src2.get("detected_roles", {}),
-            ]
-        ):
-            keys.append("student_id")
-        return keys
+        common = []
+        left = {self._norm_col(c): c for c in src1.get("columns", [])}
+        right = {self._norm_col(c): c for c in src2.get("columns", [])}
+        for alias in ("student_id", "studentid", "student"):
+            if alias in left and alias in right:
+                common.append("student_id")
+                break
+        return common
+
+    def _choose_master_source(self, sources: Sequence[JsonDict]) -> JsonDict:
+        def score(src):
+            cols = {self._norm_col(c) for c in src.get("columns", [])}
+            domain = str(src.get("domain") or "")
+            value = 0
+            if "student_id" in cols or "studentid" in cols:
+                value += 100
+            if domain in ("student", "master", "student_master"):
+                value += 50
+            if domain in ("finance", "certificate"):
+                value -= 20
+            if domain.startswith("admission"):
+                value -= 10
+            return value
+        return max(sources, key=score)
+
+    def _relationship_candidate(self, left: JsonDict, right: JsonDict) -> Optional[JsonDict]:
+        left_cols = {self._norm_col(c): c for c in left.get("columns", [])}
+        right_cols = {self._norm_col(c): c for c in right.get("columns", [])}
+        left_name, right_name = left.get("name"), right.get("name")
+        for key in ("student_id", "studentid"):
+            if key in left_cols and key in right_cols:
+                return {
+                    "left_source": left_name,
+                    "right_source": right_name,
+                    "join_type": "left",
+                    "keys": ["student_id"],
+                    "left_key_column": left_cols[key],
+                    "right_key_column": right_cols[key],
+                    "confidence": "high",
+                    "risk": "low",
+                    "reason": "shared student-id key",
+                    "expected_row_count": left.get("row_count"),
+                }
+
+        identity_keys = []
+        for role, aliases in {
+            "student_mobile": ("phone", "mobile", "mobilenostudent", "studentmobile"),
+            "email": ("email", "emailaddress"),
+            "name": ("name", "studentname"),
+        }.items():
+            if any(a in left_cols for a in aliases) and any(a in right_cols for a in aliases):
+                identity_keys.append(role)
+        if identity_keys and str(right.get("domain", "")).startswith("admission"):
+            return {
+                "left_source": left_name,
+                "right_source": right_name,
+                "join_type": "left",
+                "keys": identity_keys,
+                "confidence": "medium",
+                "risk": "medium",
+                "reason": "admission identity match candidate",
+                "expected_row_count": left.get("row_count"),
+            }
+        return {
+            "left_source": left_name,
+            "right_source": right_name,
+            "join_type": "none",
+            "keys": [],
+            "confidence": "low",
+            "risk": "high",
+            "reason": "no shared high-confidence key",
+            "expected_row_count": left.get("row_count"),
+        }
 
     # --- Private: Capability Assessment ---
 
@@ -623,6 +719,28 @@ class DynamicDataProcessorAgent:
         }
 
     # --- Private: Helpers ---
+
+    def _infer_domain(self, name: str, columns: Sequence[str]) -> str:
+        text = " ".join([str(name)] + [str(c) for c in columns]).lower()
+        rules = [
+            ("finance", ("fee", "fees", "payment", "paid", "pending", "amount",
+                         "invoice", "revenue", "collection")),
+            ("certificate", ("certificate", "issue date", "certificate number")),
+            ("student", ("student-id", "student id", "phone", "secondary contact",
+                         "date of joining", "mode")),
+            ("admission", ("admission", "preferred branch", "receipt id",
+                           "from where", "which course")),
+            ("marketing", ("campaign", "lead source", "channel", "source")),
+            ("operations", ("faculty", "batch", "branch", "status")),
+        ]
+        for domain, words in rules:
+            if any(word in text for word in words):
+                return domain
+        return "unknown"
+
+    @staticmethod
+    def _norm_col(col: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(col).strip().lower().replace("-", "_"))
 
     def _log(self, message: str):
         """Log a message."""
