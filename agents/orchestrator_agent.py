@@ -206,7 +206,13 @@ class OrchestratorAgent:
 
         # --- Stages 4-6.5: per business question ----------------------------
         state["stage_reached"] = "analysis"
-        questions = brief.get("business_questions") or []
+        # Generic sheets use the rewritten (data-driven) question texts from the
+        # adapted brief; institute sheets keep the original brief's questions.
+        if dataset_mode == "generic":
+            questions = (adapted_brief.get("business_questions")
+                         or brief.get("business_questions") or [])
+        else:
+            questions = brief.get("business_questions") or []
         if max_questions is not None:
             questions = questions[:max_questions]
 

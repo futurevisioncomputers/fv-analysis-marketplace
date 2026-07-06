@@ -186,14 +186,17 @@ class VisualizationAgent:
         charts: List[JsonDict] = []
         for dim, rows in by_dim.items():
             rows = sorted(rows, key=lambda r: r.get("value", 0), reverse=True)
+            # Display the source column's real name; `dim` stays the canonical
+            # role (recommendation/insights key owner lookups off it).
+            dim_label = self._pretty(rows[0].get("dimension_label") or dim)
             labels = [str(r["segment"]).split("=", 1)[-1] for r in rows]
             values = [r.get("value", 0) for r in rows]
             charts.append({
                 "type": "bar",
-                "title": f"{self._pretty(metric)} by {dim}",
+                "title": f"{self._pretty(metric)} by {dim_label}",
                 "subtitle": f"vs baseline {self._fmt(kind, baseline)}",
                 "supports_claim": "breakdowns",
-                "alt_text": self._breakdown_alt(metric, kind, dim, rows),
+                "alt_text": self._breakdown_alt(metric, kind, dim_label, rows),
                 "chartjs": {
                     "type": "bar",
                     "data": {"labels": labels,
@@ -310,7 +313,8 @@ class VisualizationAgent:
             dropoffs.append(round(1 - values[i] / prev, 4))
         return {
             "type": "funnel",
-            "title": "Admission funnel",
+            "title": ("Admission funnel" if any(l == "Admitted" for l in labels)
+                      else "Conversion funnel"),
             "subtitle": " -> ".join(labels),
             "supports_claim": "breakdowns",
             "alt_text": "Funnel " + ", ".join(

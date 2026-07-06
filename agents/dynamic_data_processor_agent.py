@@ -180,6 +180,9 @@ class DynamicDataProcessorAgent:
         )
         if dataset_mode == "generic":
             adapted_brief["dataset_mode"] = "generic"
+            self._generalize_questions(
+                adapted_brief, problem_definition_brief, num_cols, cat_cols, date_cols
+            )
         self._log("Brief adapted")
 
         # Step 5: Detect schema changes
@@ -548,6 +551,52 @@ class DynamicDataProcessorAgent:
             ]
 
         return adapted
+
+    def _generalize_questions(
+        self,
+        adapted: JsonDict,
+        brief: Mapping[str, Any],
+        num_cols: List[str],
+        cat_cols: List[str],
+        date_cols: List[str],
+    ) -> None:
+        """In generic mode the canned institute question texts don't describe
+        this sheet. Rewrite them from the measures/dimensions that actually
+        exist; the user's own free-text question is kept verbatim."""
+        user_text = str(
+            (brief.get("problem_statement") or {}).get("raw_business_problem") or ""
+        ).strip().lower()
+
+        def label(col: str) -> str:
+            return str(col).replace("_", " ").strip()
+
+        measures = [label(c) for c in num_cols[:2]] or ["record volume"]
+        dims = [label(c) for c in cat_cols[:2]]
+
+        templates = [
+            f"What is the overall level and trend of {measures[0]}?"
+            if date_cols else f"What is the overall level of {measures[0]}?"
+        ]
+        if dims:
+            templates.append(
+                f"Which {dims[0]} segments have the highest and lowest {measures[0]}?"
+            )
+        if len(dims) > 1:
+            templates.append(
+                f"How does {measures[-1]} vary across {dims[1]}?"
+            )
+
+        i = 0
+        for q in adapted.get("business_questions") or []:
+            text = str(q.get("question") or "").strip()
+            if user_text and text.lower() == user_text:
+                continue
+            q["question"] = templates[i % len(templates)]
+            q["decision_supported"] = (
+                f"Understand {measures[0]} performance across the available segments"
+            )
+            i += 1
+        self._log(f"Generic mode: rewrote {i} canned question(s) from sheet columns")
 
     # --- Private: Schema Change Detection ---
 

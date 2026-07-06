@@ -355,6 +355,7 @@ class AnalystAgent:
                 value = self._aggregate(kind, sub)
                 results.append({
                     "dimension": role,
+                    "dimension_label": col,
                     "segment": f"{role}={seg}",
                     "value": round(value, 4),
                     "n": n,
