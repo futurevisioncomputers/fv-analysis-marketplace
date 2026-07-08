@@ -299,6 +299,11 @@ REFUND_ENTRY_RE = re.compile(r"refund", re.IGNORECASE)
 # Rupee tolerance when checking total = paid + pending (rounding in sheets).
 RECON_TOLERANCE = 1.0
 
+# person_id key normalization: names keep letters/digits/spaces only; phones
+# keep the last 10 digits (drops +91 / spaces / hyphens / float ".0" artifacts).
+_PERSON_NAME_NORM_RE = re.compile(r"[^a-z0-9 ]+")
+_NON_DIGIT_RE = re.compile(r"\D")
+
 
 class DataEngineerAgent:
     """Cleans a source CSV into a canonical dataframe + quality report."""
@@ -563,6 +568,9 @@ class DataEngineerAgent:
         # Derive status flags from the raw name BEFORE PII masking, otherwise
         # markers like "(cancelled)" are lost once the name is hashed.
         self._derive_status_flags(df, roles, known_issues)
+        # Person identity also needs the raw (marker-stripped) name + phone;
+        # the emitted person_id is already a salted hash.
+        self._derive_person_id(df, roles, known_issues)
 
         canonical_columns = self._mask_pii(df, roles, known_issues)
         dedup_keys = self._dedupe(df, roles, known_issues)
@@ -1416,6 +1424,63 @@ class DataEngineerAgent:
             if removed:
                 reasons["missing_primary_date"] = removed
         return df, reasons
+
+    # ------------------------------------------------------------ person id
+
+    def _derive_person_id(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Stable cross-source person identity (student-id is NOT a person id).
+
+        The same person re-enrolls under new student-ids (real data: Khiren
+        Jain holds ids 3, 244, 609, 1070), so person-level metrics need their
+        own key: person_id = salted hash of normalized name + last-10-digit
+        phone. Runs AFTER lifecycle/note markers are stripped from the name
+        (so "(cancelled)" variants hash identically) and BEFORE PII masking
+        (needs the raw values); only the hash is emitted, nothing raw leaks.
+
+        Conditional emission: requires a name role. Phone missing -> name-only
+        key (documented limitation: a name collision without phones merges).
+        Adds person_enrollment_count (rows per person within this source) and,
+        only when repeats exist, is_repeat_enrollment.
+        """
+        name_col = roles.get("name")
+        if not name_col or name_col not in df.columns:
+            return
+        names = df[name_col].map(self._normalize_person_name)
+        phone_col = roles.get("student_mobile")
+        if phone_col and phone_col in df.columns:
+            phones = df[phone_col].map(self._normalize_phone_digits)
+        else:
+            phones = pd.Series("", index=df.index)
+        keys = (names + "|" + phones).where(names != "")
+        df["person_id"] = keys.map(self._hash_value)
+
+        counts = df.groupby("person_id")["person_id"].transform("size")
+        df["person_enrollment_count"] = counts.where(df["person_id"].notna())
+        n_repeat_rows = int((counts > 1).sum())
+        if n_repeat_rows:
+            df["is_repeat_enrollment"] = (counts > 1).fillna(False)
+            issues.append(
+                f"person_id: {n_repeat_rows} row(s) belong to repeat-enrollment person(s)"
+            )
+
+    @staticmethod
+    def _normalize_person_name(value: Any) -> str:
+        if pd.isna(value):
+            return ""
+        text = _PERSON_NAME_NORM_RE.sub(" ", str(value).strip().lower())
+        return re.sub(r"\s+", " ", text).strip()
+
+    @staticmethod
+    def _normalize_phone_digits(value: Any) -> str:
+        if pd.isna(value):
+            return ""
+        text = str(value).strip()
+        if text.endswith(".0"):  # float artifact from numeric CSV columns
+            text = text[:-2]
+        digits = _NON_DIGIT_RE.sub("", text)
+        return digits[-10:] if len(digits) >= 10 else ""
 
     # ------------------------------------------------------------------- PII
 

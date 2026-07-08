@@ -364,6 +364,45 @@ def test_no_ledger_no_reconciliation() -> None:
     assert agent._build_payment_reconciliation(packages, {"students": df}) is None
 
 
+# ------------------------------------------------------ person identity
+
+def test_person_id_repeat_enrollment() -> None:
+    # Khiren Jain re-enrolls under new student-ids (real: 3/244/609/1070).
+    # Case/spacing/phone-format noise must hash to ONE person.
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "student-id": [3, 244, 609, 74],
+        "Name": ["Khiren Jain", "khiren  jain ", "KHIREN JAIN", "Rupesh Yadav"],
+        "Mobile": ["9998877665", "+91 99988 77665", "9998877665.0", "9876543210"],
+    })
+    issues: list = []
+    agent._derive_person_id(
+        df, {"name": "Name", "student_mobile": "Mobile"}, issues
+    )
+
+    ids = list(df["person_id"])
+    assert ids[0] == ids[1] == ids[2] != ids[3]
+    # emitted id is a salted hash, never the raw name/phone
+    assert all(len(i) == 16 and "khiren" not in i.lower() for i in ids)
+    assert list(df["person_enrollment_count"]) == [3, 3, 3, 1]
+    assert list(df["is_repeat_enrollment"]) == [True, True, True, False]
+
+
+def test_person_id_conditional() -> None:
+    agent = DataEngineerAgent(output_dir="output")
+
+    # No name role -> no person columns invented.
+    df = pd.DataFrame({"Amount": [100]})
+    agent._derive_person_id(df, {"amount": "Amount"}, [])
+    assert "person_id" not in df.columns
+
+    # No phone role -> name-only key still works; no repeats -> no flag.
+    df = pd.DataFrame({"Name": ["Khiren Jain", "Rupesh Yadav", None]})
+    agent._derive_person_id(df, {"name": "Name"}, [])
+    assert df["person_id"].notna().tolist() == [True, True, False]
+    assert "is_repeat_enrollment" not in df.columns
+
+
 def main() -> int:
     failures = 0
     for name, fn in sorted(globals().items()):

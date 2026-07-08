@@ -194,7 +194,7 @@ Two additional sheets studied (`Course_Completed`, `Not_Coming`):
 |------|------|-----------|
 | 1 | ✅ Agent 2 canonicalization dicts + date parser v2 + status extraction | Unblocks every downstream metric on TODAY's data |
 | 2 | ✅ Multi-file bundle ingest + payment reconciliation (`payment_reconciliation` in run_sources output: per-enrollment paid/refund/installments/span/channel + recon & negative-pending flags) | Enables fee/default analytics |
-| 3 | Person-id entity resolution + phone-linked conversion | Repeat-student + funnel metrics |
+| 3 | ✅ Person-id entity resolution (`person_id` = salted hash of normalized name + last-10-digit phone, derived post-marker-strip / pre-mask; `person_enrollment_count`, `is_repeat_enrollment`). Phone-linked enquiry→admission conversion still open | Repeat-student + funnel metrics |
 | 4 | New Analyst metrics + Monitoring hooks | Business value visible in report |
 | 5 | PII mask v2 | Correctness/safety |
 | 6 | Hand institute the C-checklist; wait one intake cycle | Creates labels |
