@@ -89,6 +89,9 @@ ROLE_SPECS: Dict[str, Dict[str, List[str]]] = {
         "exclude": [],
     },
     "payment_mode": {"include": ["mode of payment", "payment mode"], "exclude": []},
+    # Fee-ledger free text ("paid to ICICI", "razorpay emi", "2400 refunded").
+    # Kept as text; payment_channel / is_refund_entry are parsed from it.
+    "description": {"include": ["description", "narration", "particular"], "exclude": []},
     # Timetable churn sheets: "Status & reason" / "reason for not coming" hold
     # free-text progress + churn reasons. Must precede generic `status`.
     "status_reason": {
@@ -279,6 +282,23 @@ COMPLETION_BY_SOURCE = (
     ("timetable", "active"),
 )
 
+# Payment channel buried in receipt Description prose ("paid to ICICI",
+# "razorpay emi", "cheque no 123", "paid to sc"). Ordered: first match wins,
+# so "razorpay emi to icici" classifies as emi, not bank_transfer.
+PAYMENT_CHANNEL_PATTERNS: List[Tuple[str, re.Pattern]] = [
+    ("emi", re.compile(r"razorpay|\bemi\b|bajaj", re.IGNORECASE)),
+    ("cheque", re.compile(r"cheque|\bchq\b|check\s*no", re.IGNORECASE)),
+    ("upi", re.compile(r"\bupi\b|gpay|google\s*pay|phonepe|paytm", re.IGNORECASE)),
+    ("bank_transfer", re.compile(r"icici|hdfc|\bsbi\b|axis|kotak|neft|imps|rtgs|\bbank\b", re.IGNORECASE)),
+    ("cash", re.compile(r"\bcash\b", re.IGNORECASE)),
+]
+
+# Refund facts also live in Description ("2400 refunded", "refund from icici").
+REFUND_ENTRY_RE = re.compile(r"refund", re.IGNORECASE)
+
+# Rupee tolerance when checking total = paid + pending (rounding in sheets).
+RECON_TOLERANCE = 1.0
+
 
 class DataEngineerAgent:
     """Cleans a source CSV into a canonical dataframe + quality report."""
@@ -366,6 +386,7 @@ class DataEngineerAgent:
 
         source_summary = self._source_summary(ready, frames, relationships)
         domain_metrics = self._domain_metrics(ready, frames)
+        payment_reconciliation = self._build_payment_reconciliation(ready, frames)
         canonical_columns = self._merged_roles(ready, merged)
         return {
             "status": "ready",
@@ -406,6 +427,9 @@ class DataEngineerAgent:
             "relationship_summary": relationships,
             "multi_source_summary": self._multi_source_summary(source_summary, relationships),
             "domain_metrics": domain_metrics,
+            # None when no finance ledger among sources — key present but empty,
+            # so downstream agents can gate on it without inventing fee data.
+            "payment_reconciliation": payment_reconciliation,
         }
 
     def run(
@@ -498,6 +522,7 @@ class DataEngineerAgent:
         df = self._apply_canonical_maps(df, roles, known_issues)
         df = self._normalize_pincode(df, roles, known_issues)
         df = self._compute_lead_to_admission_days(df, roles, known_issues)
+        self._derive_payment_channel(df, roles, known_issues)
 
         multivalue_columns: Dict[str, str] = {}
         if split_multivalue:
@@ -932,7 +957,17 @@ class DataEngineerAgent:
             )
             numeric = pd.to_numeric(cleaned, errors="coerce")
             bad = int(numeric.isna().sum() - df[col].isna().sum())
-            df[col] = numeric.clip(lower=0)  # refunds/negatives -> 0
+            if role == "pending":
+                # Negative pending = overpayment / refund-due. Real anomaly
+                # signal (reconciliation flags it) — must NOT be clipped away.
+                df[col] = numeric
+                n_neg = int((numeric < 0).sum())
+                if n_neg:
+                    issues.append(
+                        f"pending '{col}': {n_neg} negative value(s) kept (overpayment signal)"
+                    )
+            else:
+                df[col] = numeric.clip(lower=0)  # negative fee/paid is garbage
             if bad > 0:
                 issues.append(f"{role} '{col}': {bad} non-numeric value(s) set to NaN")
         return df
@@ -951,6 +986,41 @@ class DataEngineerAgent:
             if bad > 0:
                 issues.append(f"{role} '{col}': {bad} non-numeric value(s) set to NaN")
         return df
+
+    def _derive_payment_channel(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Parse payment channel + refund marker from ledger Description prose.
+
+        Conditional emission: `payment_channel` / `is_refund_entry` are added
+        only when at least one row matches, so non-ledger sheets that happen to
+        have a description column gain nothing.
+        """
+        col = roles.get("description")
+        if not col or col not in df.columns:
+            return
+        text = df[col].fillna("").astype(str)
+
+        def classify(value: str) -> Optional[str]:
+            for label, pattern in PAYMENT_CHANNEL_PATTERNS:
+                if pattern.search(value):
+                    return label
+            return None
+
+        channels = text.map(classify)
+        n_found = int(channels.notna().sum())
+        if n_found:
+            df["payment_channel"] = channels
+            issues.append(
+                f"payment_channel parsed from '{col}' for {n_found} row(s)"
+            )
+        refunds = text.str.contains(REFUND_ENTRY_RE)
+        n_refunds = int(refunds.sum())
+        if n_refunds:
+            df["is_refund_entry"] = refunds
+            issues.append(
+                f"{n_refunds} refund entr(ies) detected in '{col}'"
+            )
 
     def _derive_status_flags(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
@@ -1744,6 +1814,126 @@ class DataEngineerAgent:
             elif domain in ("admission", "marketing"):
                 vals["lead_count"] = vals.get("lead_count", 0) + int(len(frame))
         return metrics
+
+    def _build_payment_reconciliation(
+        self, packages: Sequence[JsonDict], frames: Mapping[str, pd.DataFrame]
+    ) -> Optional[JsonDict]:
+        """Per-enrollment payment reconciliation from finance sources.
+
+        Detects sources by role shape, not name: a finance frame carrying a
+        receipt role is the transaction LEDGER (many rows per enrollment); one
+        carrying a pending role is the per-enrollment ROLLUP (total/pending).
+        Emits nothing (None) when no ledger exists — no table is invented.
+
+        Output parquet columns per enrollment (student-id grain):
+          paid_sum, refund_sum, net_paid, n_installments,
+          first/last_payment_date, payment_span_days, payment_channel,
+          total_fees, pending  (when rollup present),
+          recon_gap = total - net_paid - pending, recon_flag (|gap| > tol),
+          negative_pending_flag.
+        """
+        ledger = rollup = None
+        for pkg in packages:
+            if str(pkg.get("source_domain")) != "finance":
+                continue
+            roles = pkg.get("canonical_columns") or {}
+            frame = frames.get(pkg.get("source_name"))
+            if frame is None or "student_id" not in roles:
+                continue
+            money_col = roles.get("amount") or roles.get("paid")
+            has_receipt = "receipt_id" in roles or "receipt_date" in roles
+            if ledger is None and has_receipt and money_col in frame.columns:
+                ledger = (pkg, frame, roles)
+            elif rollup is None and roles.get("pending") in frame.columns:
+                rollup = (pkg, frame, roles)
+        if ledger is None:
+            return None
+
+        _, ldf, lroles = ledger
+        sid_col = lroles["student_id"]
+        money_col = lroles.get("amount") or lroles.get("paid")
+        work = ldf[ldf[sid_col].notna()].copy()
+        work["_sid"] = work[sid_col].astype(str).str.strip()
+        work = work[work["_sid"] != ""]
+        if work.empty:
+            return None
+
+        amounts = pd.to_numeric(work[money_col], errors="coerce").fillna(0.0)
+        refund_mask = (
+            work["is_refund_entry"].fillna(False).astype(bool)
+            if "is_refund_entry" in work.columns
+            else pd.Series(False, index=work.index)
+        )
+        work["_paid"] = amounts.where(~refund_mask, 0.0)
+        work["_refund"] = amounts.where(refund_mask, 0.0)
+
+        recon = work.groupby("_sid").agg(
+            paid_sum=("_paid", "sum"),
+            refund_sum=("_refund", "sum"),
+            n_installments=("_paid", lambda s: int((s > 0).sum())),
+        )
+        recon["net_paid"] = recon["paid_sum"] - recon["refund_sum"]
+
+        date_col = lroles.get("receipt_date")
+        if date_col and date_col in work.columns and pd.api.types.is_datetime64_any_dtype(
+            work[date_col]
+        ):
+            spans = work.groupby("_sid")[date_col].agg(["min", "max"])
+            recon["first_payment_date"] = spans["min"]
+            recon["last_payment_date"] = spans["max"]
+            recon["payment_span_days"] = (spans["max"] - spans["min"]).dt.days
+
+        if "payment_channel" in work.columns:
+            recon["payment_channel"] = work.groupby("_sid")["payment_channel"].agg(
+                lambda s: s.dropna().mode().iloc[0] if s.notna().any() else None
+            )
+
+        if rollup is not None:
+            _, rdf, rroles = rollup
+            rsid = rroles["student_id"]
+            side = rdf[rdf[rsid].notna()].copy()
+            side["_sid"] = side[rsid].astype(str).str.strip()
+            side = side[side["_sid"] != ""].drop_duplicates("_sid")
+            keep: Dict[str, str] = {}
+            if rroles.get("amount") in side.columns:
+                keep[rroles["amount"]] = "total_fees"
+            if rroles.get("pending") in side.columns:
+                keep[rroles["pending"]] = "pending"
+            side = side.set_index("_sid")[list(keep)].rename(columns=keep)
+            recon = recon.join(side, how="outer")
+            if "pending" in recon.columns:
+                recon["negative_pending_flag"] = recon["pending"] < 0
+            if {"total_fees", "pending"} <= set(recon.columns):
+                recon["recon_gap"] = (
+                    recon["total_fees"].fillna(0)
+                    - recon["net_paid"].fillna(0)
+                    - recon["pending"].fillna(0)
+                )
+                recon["recon_flag"] = recon["recon_gap"].abs() > RECON_TOLERANCE
+
+        recon = recon.reset_index().rename(columns={"_sid": "student_id"})
+        path = self._write_parquet(recon, "payment_reconciliation.csv")
+
+        summary: JsonDict = {
+            "table_path": path,
+            "enrollments": int(len(recon)),
+            "paid_sum_total": float(recon["paid_sum"].sum(skipna=True)),
+            "refund_sum_total": float(recon["refund_sum"].sum(skipna=True)),
+            "avg_installments": float(recon["n_installments"].mean(skipna=True))
+            if recon["n_installments"].notna().any()
+            else 0.0,
+        }
+        if "payment_channel" in recon.columns:
+            summary["channel_counts"] = (
+                recon["payment_channel"].value_counts(dropna=True).to_dict()
+            )
+        if "recon_flag" in recon.columns:
+            summary["recon_mismatch_count"] = int(recon["recon_flag"].fillna(False).sum())
+        if "negative_pending_flag" in recon.columns:
+            summary["negative_pending_count"] = int(
+                recon["negative_pending_flag"].fillna(False).sum()
+            )
+        return summary
 
     def _merged_roles(self, packages: Sequence[JsonDict], merged: pd.DataFrame) -> Dict[str, str]:
         roles: Dict[str, str] = {}

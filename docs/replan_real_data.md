@@ -192,8 +192,8 @@ Two additional sheets studied (`Course_Completed`, `Not_Coming`):
 
 | Step | Work | Why first |
 |------|------|-----------|
-| 1 | Agent 2 canonicalization dicts + date parser v2 + status extraction | Unblocks every downstream metric on TODAY's data |
-| 2 | Multi-file bundle ingest + payment reconciliation | Enables fee/default analytics |
+| 1 | ✅ Agent 2 canonicalization dicts + date parser v2 + status extraction | Unblocks every downstream metric on TODAY's data |
+| 2 | ✅ Multi-file bundle ingest + payment reconciliation (`payment_reconciliation` in run_sources output: per-enrollment paid/refund/installments/span/channel + recon & negative-pending flags) | Enables fee/default analytics |
 | 3 | Person-id entity resolution + phone-linked conversion | Repeat-student + funnel metrics |
 | 4 | New Analyst metrics + Monitoring hooks | Business value visible in report |
 | 5 | PII mask v2 | Correctness/safety |

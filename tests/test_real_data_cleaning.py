@@ -237,6 +237,133 @@ def test_status_reason_role_detected() -> None:
     assert roles.get("status") != "Status & reason"
 
 
+# ------------------------------------------------- payment reconciliation
+
+def test_payment_channel_from_description() -> None:
+    # Real fees-recpit Description prose.
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Description": [
+            "paid to ICICI",
+            "razorpay emi",
+            "2400 refunded",
+            "cheque no 445566",
+            "paid to sc/shaurya creation",
+            "cash",
+            "paid by gpay",
+        ]
+    })
+    issues: list = []
+    agent._derive_payment_channel(df, {"description": "Description"}, issues)
+
+    got = [None if pd.isna(x) else x for x in df["payment_channel"]]
+    assert got == [
+        "bank_transfer", "emi", None, "cheque", None, "cash", "upi",
+    ]
+    assert list(df["is_refund_entry"]) == [
+        False, False, True, False, False, False, False,
+    ]
+
+
+def test_negative_pending_survives() -> None:
+    # Tanish Kalra real row: Amt Pending = -7200 (overpayment). Must NOT be
+    # clipped to 0; amount/paid negatives still clip (garbage there).
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Amt Pending": ["-7200", "0", "1,500"],
+        "Total Fees": ["-100", "12,000", "8000"],
+    })
+    issues: list = []
+    agent._normalize_money(
+        df, {"pending": "Amt Pending", "amount": "Total Fees"}, issues
+    )
+    assert list(df["Amt Pending"]) == [-7200.0, 0.0, 1500.0]
+    assert list(df["Total Fees"]) == [0.0, 12000.0, 8000.0]
+
+
+def test_payment_reconciliation_table() -> None:
+    import tempfile
+
+    agent = DataEngineerAgent(output_dir=tempfile.mkdtemp())
+
+    # Ledger (fees-recpit shape): several receipt rows per enrollment.
+    ledger = pd.DataFrame({
+        "student-id": ["500", "500", "501", "501", "502", "503", "503"],
+        "Receipt-Id": ["R1", "R2", "R3", "R4", "R5", "R6", "R7"],
+        "Date of Receipt": pd.to_datetime([
+            "2025-01-10", "2025-03-10", "2025-02-01", "2025-02-15",
+            "2025-04-01", "2025-05-01", "2025-05-20",
+        ]),
+        "Amount": [5000.0, 5000.0, 10000.0, 7200.0, 5000.0, 2400.0, 2400.0],
+        "Description": [
+            "paid to ICICI", "paid to ICICI", "cash", "cash",
+            "razorpay emi", "cash", "2400 refunded",
+        ],
+    })
+    agent._derive_payment_channel(ledger, {"description": "Description"}, [])
+    ledger_roles = {
+        "student_id": "student-id", "receipt_id": "Receipt-Id",
+        "receipt_date": "Date of Receipt", "amount": "Amount",
+        "description": "Description",
+    }
+
+    # Rollup (fees-data shape): one row per enrollment.
+    rollup = pd.DataFrame({
+        "student-id": ["500", "501", "502", "503"],
+        "Total Fees": [12000.0, 10000.0, 8000.0, 0.0],
+        "Amt Pending": [2000.0, -7200.0, 0.0, 0.0],
+    })
+    rollup_roles = {
+        "student_id": "student-id", "amount": "Total Fees",
+        "pending": "Amt Pending",
+    }
+
+    packages = [
+        {"source_name": "fees-data", "source_domain": "finance",
+         "canonical_columns": rollup_roles},
+        {"source_name": "fees-recpit", "source_domain": "finance",
+         "canonical_columns": ledger_roles},
+    ]
+    frames = {"fees-data": rollup, "fees-recpit": ledger}
+
+    summary = agent._build_payment_reconciliation(packages, frames)
+    assert summary is not None
+    recon = pd.read_parquet(summary["table_path"]).set_index("student_id")
+
+    # 500: 2 installments, 59-day span, bank channel, books balance.
+    row = recon.loc["500"]
+    assert row["paid_sum"] == 10000.0 and row["n_installments"] == 2
+    assert row["payment_span_days"] == 59
+    assert row["payment_channel"] == "bank_transfer"
+    assert not row["recon_flag"]
+
+    # 501: overpaid — negative pending kept and flagged, books still balance.
+    row = recon.loc["501"]
+    assert row["negative_pending_flag"] and not row["recon_flag"]
+
+    # 502: Full-Paid-style mismatch — total 8000, paid 5000, pending 0.
+    row = recon.loc["502"]
+    assert row["recon_flag"] and row["recon_gap"] == 3000.0
+
+    # 503: cancelled + refunded — refund excluded from net paid.
+    row = recon.loc["503"]
+    assert row["refund_sum"] == 2400.0 and row["net_paid"] == 0.0
+    assert not row["recon_flag"]
+
+    assert summary["recon_mismatch_count"] == 1
+    assert summary["negative_pending_count"] == 1
+    assert summary["channel_counts"].get("emi") == 1
+
+
+def test_no_ledger_no_reconciliation() -> None:
+    # Honesty gate: no finance ledger among sources -> None, nothing invented.
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({"Name": ["A"]})
+    packages = [{"source_name": "students", "source_domain": "student",
+                 "canonical_columns": {"name": "Name"}}]
+    assert agent._build_payment_reconciliation(packages, {"students": df}) is None
+
+
 def main() -> int:
     failures = 0
     for name, fn in sorted(globals().items()):
