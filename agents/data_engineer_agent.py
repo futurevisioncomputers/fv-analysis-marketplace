@@ -28,6 +28,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+from . import canonical_maps
+
 
 JsonDict = Dict[str, Any]
 
@@ -87,6 +89,12 @@ ROLE_SPECS: Dict[str, Dict[str, List[str]]] = {
         "exclude": [],
     },
     "payment_mode": {"include": ["mode of payment", "payment mode"], "exclude": []},
+    # Timetable churn sheets: "Status & reason" / "reason for not coming" hold
+    # free-text progress + churn reasons. Must precede generic `status`.
+    "status_reason": {
+        "include": ["status & reason", "reason for not coming"],
+        "exclude": [],
+    },
     "status": {"include": ["status", "stage"], "exclude": []},
     "mode": {"include": ["mode"], "exclude": ["payment"]},
     # --- contact / PII ---
@@ -227,6 +235,48 @@ _EMAIL_VALUE_RE = r"[^@\s]+@[^@\s]+\.[^@\s]+"
 CANCEL_MARKER_RE = re.compile(
     r"\(?\s*(?:cancel+ed|cancell?ed|cancel|canceled|cancled|left|dropped|discontinued)\s*\)?",
     re.IGNORECASE,
+)
+
+# Lifecycle markers embedded in name parentheticals across the real sheets:
+# "(admission cancelled all refunded)", "(not coming)", "(Register for trial ...)".
+# Ordered by priority: within one marker text, the first matching label wins,
+# so "cancelled all refunded" resolves to refunded (money already returned).
+STATUS_MARKERS: List[Tuple[str, re.Pattern]] = [
+    ("refunded", re.compile(r"refund", re.IGNORECASE)),
+    ("cancelled", CANCEL_MARKER_RE),
+    ("not_coming", re.compile(r"not\s+coming", re.IGNORECASE)),
+    ("trial", re.compile(r"register(?:ed)?\s+for\s+trial|\btrial\b", re.IGNORECASE)),
+]
+
+# Parenthetical chunk in a name cell; inspected for lifecycle markers.
+_NAME_PAREN_RE = re.compile(r"\(([^)]*)\)")
+
+# Operational notes (NOT lifecycle) embedded in name parentheticals across the
+# timetable sheets: "(fast track)", "(FT till july end)", "(only till 30 may)",
+# "(ft) 30/6". Fast-track markers set `is_fast_track`; schedule notes are just
+# stripped so the name hash stays stable for the same person.
+FAST_TRACK_MARKER_RE = re.compile(r"fast\s*track|\bft\b", re.IGNORECASE)
+NOTE_MARKER_RE = re.compile(
+    r"only\s+till|till\s+\w+|don'?t\s+delete|register(?:ed)?\s+for", re.IGNORECASE
+)
+# Residue after stripping "(ft) 30/6"-style parens: a trailing bare date chunk.
+_TRAILING_DATE_FRAGMENT_RE = re.compile(r"\s+\d{1,2}[/-]\d{1,2}\s*$")
+
+# Placeholder rows the institute keeps for sheet dropdowns:
+# "zzzzz (Don't Delete)". Pure structural junk — purged before cleaning and
+# excluded from the drop-fraction escalation math.
+PLACEHOLDER_NAME_RE = re.compile(r"^\s*z{3,}", re.IGNORECASE)
+
+# Lifecycle ground truth carried by the timetable workbook's SHEET, not any
+# column: Course_Completed -> completed, Not_Coming -> not_coming,
+# Main_data -> active. Matched against the source name (substring, lowered).
+COMPLETION_BY_SOURCE = (
+    ("complete", "completed"),
+    ("not_coming", "not_coming"),
+    ("not coming", "not_coming"),
+    ("main_data", "active"),
+    ("time_table", "active"),
+    ("timetable", "active"),
 )
 
 
@@ -419,7 +469,16 @@ class DataEngineerAgent:
         df = raw.copy()
 
         df = self._drop_ref_columns(df, known_issues)
+        df = self._drop_empty_columns(df, known_issues)
         df = self._prefer_cleaned_columns(df, known_issues)
+        # Purge "zzzzz (Don't Delete)" dropdown-placeholder rows. Structural
+        # junk, so it lowers the baseline for the drop-fraction escalation.
+        df, placeholder_count = self._drop_placeholder_rows(df, known_issues)
+        effective_rows = original_rows - placeholder_count
+        if effective_rows == 0:
+            return self._blocked(
+                "Source contained only placeholder rows.", row_count=0
+            )
 
         roles = self._detect_roles(df)
         # Value-based fallback: infer roles for columns no header keyword claimed,
@@ -436,6 +495,7 @@ class DataEngineerAgent:
         df = self._normalize_money(df, roles, known_issues)
         df = self._normalize_discovered_numeric(df, roles, known_issues)
         df = self._normalize_categoricals(df, roles)
+        df = self._apply_canonical_maps(df, roles, known_issues)
         df = self._normalize_pincode(df, roles, known_issues)
         df = self._compute_lead_to_admission_days(df, roles, known_issues)
 
@@ -447,6 +507,10 @@ class DataEngineerAgent:
             df["source_name"] = source_name
         if source_domain:
             df["source_domain"] = source_domain
+        # Timetable workbook sheets carry lifecycle ground truth in their NAME
+        # (Course_Completed / Not_Coming / Main_data) — the churn/completion
+        # label the row data itself lacks.
+        self._derive_completion_status(df, source_name, known_issues)
 
         # Coalesce all date roles into one per-row event_date, then derive the
         # report time columns and drop only rows with no date at all.
@@ -456,11 +520,16 @@ class DataEngineerAgent:
         time_columns = self._derive_time_dimensions(df)
 
         df, dropped_reasons = self._drop_invalid_rows(df, roles)
+        if placeholder_count:
+            dropped_reasons["placeholder_rows"] = placeholder_count
         drop_count = original_rows - len(df)
+        # Escalation baseline excludes structural placeholder junk, which is
+        # not real data loss.
+        real_drop = effective_rows - len(df)
 
-        if original_rows and drop_count / original_rows > MAX_DROP_FRACTION:
+        if effective_rows and real_drop / effective_rows > MAX_DROP_FRACTION:
             return self._blocked(
-                f"Row count dropped {drop_count}/{original_rows} "
+                f"Row count dropped {real_drop}/{effective_rows} "
                 f"(> {int(MAX_DROP_FRACTION * 100)}%) during cleaning.",
                 row_count=len(df),
                 quality_extra={"dropped_reasons": dropped_reasons},
@@ -506,6 +575,61 @@ class DataEngineerAgent:
             df = df.drop(columns=ref_cols)
             issues.append(f"Dropped {len(ref_cols)} '#REF!' column(s): {ref_cols}")
         return df
+
+    def _drop_empty_columns(self, df: pd.DataFrame, issues: List[str]) -> pd.DataFrame:
+        """Drop all-NaN columns (the timetable sheets interleave blank columns).
+
+        Headers like '' / 'Unnamed: 3' with no values carry zero signal and
+        would otherwise pollute role discovery and null-rate reporting.
+        """
+        empty_cols = [c for c in df.columns if df[c].isna().all()]
+        if empty_cols:
+            df = df.drop(columns=empty_cols)
+            issues.append(f"Dropped {len(empty_cols)} all-empty column(s)")
+        return df
+
+    def _drop_placeholder_rows(
+        self, df: pd.DataFrame, issues: List[str]
+    ) -> Tuple[pd.DataFrame, int]:
+        """Purge dropdown-placeholder rows ("zzzzz (Don't Delete)").
+
+        A row is a placeholder when ANY text cell starts with 'zzz...'. Returns
+        (frame, purged_count); the count is excluded from real-drop math.
+        """
+        mask = pd.Series(False, index=df.index)
+        for col in df.columns:
+            if pd.api.types.is_numeric_dtype(df[col]):
+                continue
+            vals = df[col].astype("string")
+            mask |= vals.str.match(PLACEHOLDER_NAME_RE).fillna(False)
+        count = int(mask.sum())
+        if count:
+            df = df.loc[~mask]
+            issues.append(f"Purged {count} placeholder row(s) ('zzzz…/Don't Delete')")
+        return df, count
+
+    def _derive_completion_status(
+        self, df: pd.DataFrame, source_name: Optional[str], issues: List[str]
+    ) -> None:
+        """Label lifecycle from the source sheet's name when it encodes it.
+
+        The institute's timetable workbook separates students by sheet:
+        Course_Completed (finished), Not_Coming (churned/paused with reason),
+        Main_data (active). That sheet membership is the ONLY completion label
+        in the data, so it is captured as `completion_status`. No-op when the
+        source name matches nothing (no label invented).
+        """
+        if not source_name:
+            return
+        lowered = source_name.lower()
+        for needle, label in COMPLETION_BY_SOURCE:
+            if needle in lowered:
+                df["completion_status"] = label
+                issues.append(
+                    f"Derived completion_status='{label}' from source sheet "
+                    f"name '{source_name}'"
+                )
+                return
 
     def _prefer_cleaned_columns(self, df: pd.DataFrame, issues: List[str]) -> pd.DataFrame:
         """When both `Cleaned X` and `X` exist, keep the cleaned one as `X`."""
@@ -654,7 +778,8 @@ class DataEngineerAgent:
             if not col:
                 continue
             parsed, mixed = self._smart_parse_date_series(df[col], date_format)
-            bad = int(parsed.isna().sum())
+            parsed, out_of_range = self._enforce_date_bounds(parsed, role)
+            bad = int(parsed.isna().sum()) - out_of_range
             df[col] = parsed
             if mixed:
                 issues.append(
@@ -664,7 +789,38 @@ class DataEngineerAgent:
                 )
             if bad:
                 issues.append(f"{role} '{col}': {bad} unparseable date(s) set to NaT")
+            if out_of_range:
+                issues.append(
+                    f"{role} '{col}': {out_of_range} date(s) outside plausible "
+                    "bounds (data-entry typos like year 0026/2126 or pre-2000 "
+                    "business dates) set to NaT"
+                )
         return df
+
+    @staticmethod
+    def _enforce_date_bounds(parsed: pd.Series, role: str) -> Tuple[pd.Series, int]:
+        """NaT-out plausible-looking but impossible business dates.
+
+        The real sheets contain entry typos (`4/23/0026`, receipts dated a year
+        ahead) — pandas silently keeps any value inside datetime64 range, so an
+        explicit business-bounds check is required. Bounds by role:
+          dob        : [1900-01-01, today]           (students are born, not scheduled)
+          everything : [2000-01-01, today + 2 years] (institute opened this century;
+                       courses are booked at most a term ahead)
+        Returns (bounded_series, n_removed).
+        """
+        if parsed.empty or not pd.api.types.is_datetime64_any_dtype(parsed):
+            return parsed, 0
+        today = pd.Timestamp.today().normalize()
+        if role == "dob":
+            lo, hi = pd.Timestamp("1900-01-01"), today
+        else:
+            lo, hi = pd.Timestamp("2000-01-01"), today + pd.DateOffset(years=2)
+        bad = parsed.notna() & ((parsed < lo) | (parsed > hi))
+        n_bad = int(bad.sum())
+        if n_bad:
+            parsed = parsed.mask(bad)
+        return parsed, n_bad
 
     # Matches D?/M?/Y or D?-M?-Y style numeric dates (the only ambiguous case).
     _NUMERIC_DATE_RE = re.compile(r"^\s*(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\s*$")
@@ -806,42 +962,101 @@ class DataEngineerAgent:
         its backing column exists, so no data is invented (Agent 5 visualizes
         only what is present). Flags added when data supports them:
 
-          is_cancelled  - "(cancelled)"/"left"/"dropped" marker in the name.
+          enrollment_status - lifecycle from name markers:
+                              active/cancelled/refunded/not_coming/trial.
+          is_cancelled  - "(cancelled)"/"refunded"/"left"/"dropped" in the name.
           is_enquiry    - True for every retained row (each row is >= an enquiry).
           is_admitted   - admission/joining date present.
           is_fee_paid   - paid/amount > 0.
           certificate_delay_days / is_certificate_pending - from issue_date.
         """
-        self._derive_cancellation_flag(df, roles, issues)
+        self._derive_lifecycle_status(df, roles, issues)
         self._derive_funnel_flags(df, roles, issues)
         self._derive_certificate_flags(df, roles, issues)
 
-    def _derive_cancellation_flag(
+    def _derive_lifecycle_status(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
     ) -> None:
-        """Extract `is_cancelled` from the raw name, then strip the marker.
+        """Extract `enrollment_status` (+ legacy `is_cancelled`) from raw names.
 
-        Real admission/student sheets tag cancellations inline, e.g.
-        "Patel Sai Ashokbhai (cancelled)". The name column is cleaned of the
-        marker so its later hash is not polluted by it.
+        The real sheets tag lifecycle inline in the Name column:
+        "Ritik Shah (admission cancelled all refunded)", "Riya Desai (not coming)",
+        "(Register for trial ...)". Each marker parenthetical is classified via
+        STATUS_MARKERS (refunded > cancelled > not_coming > trial) and stripped,
+        so the later name hash is identical for the same person with/without a
+        marker. Bare markers ("left", "dropped") outside parens count too.
+
+        `enrollment_status` is added whenever a name column exists (default
+        "active"); `is_cancelled` only when at least one marker was found —
+        preserving the previous conditional-flag behaviour for clean sheets.
         """
         col = roles.get("name")
         if col is None or col not in df.columns:
             return
 
-        as_str = df[col].astype("string")
-        flag = as_str.str.contains(CANCEL_MARKER_RE, na=False)
-        if not bool(flag.any()):
-            return
+        statuses: List[str] = []
+        cleaned_vals: List[Any] = []
+        fast_flags: List[bool] = []
+        n_marked = 0
+        n_fast = 0
+        for val in df[col].astype("string"):
+            if not isinstance(val, str):
+                statuses.append("active")
+                cleaned_vals.append(val)
+                fast_flags.append(False)
+                continue
 
-        df["is_cancelled"] = flag.fillna(False).astype(bool)
-        # Strip marker + collapse leftover whitespace so the hashed name is clean.
-        cleaned = as_str.str.replace(CANCEL_MARKER_RE, "", regex=True)
-        cleaned = cleaned.str.replace(r"\s+", " ", regex=True).str.strip()
-        df[col] = cleaned
-        issues.append(
-            f"Derived is_cancelled for {int(flag.sum())} row(s) from name markers"
-        )
+            status = "active"
+            fast = False
+
+            def classify_paren(match: "re.Match[str]") -> str:
+                nonlocal status, fast
+                inner = match.group(1)
+                for label, rx in STATUS_MARKERS:
+                    if rx.search(inner):
+                        if status == "active":
+                            status = label
+                        return ""  # strip the whole marker parenthetical
+                # Operational notes: "(fast track)", "(FT till july end)",
+                # "(only till 30 may)" — not lifecycle, but must be stripped so
+                # the same person hashes identically across sheets.
+                if FAST_TRACK_MARKER_RE.search(inner):
+                    fast = True
+                    return ""
+                if NOTE_MARKER_RE.search(inner):
+                    return ""
+                return match.group(0)  # legit parenthetical, keep
+
+            new = _NAME_PAREN_RE.sub(classify_paren, val)
+            # Bare markers without parentheses ("left", "dropped", "cancelled").
+            if status == "active" and CANCEL_MARKER_RE.search(new):
+                status = "cancelled"
+                new = CANCEL_MARKER_RE.sub("", new)
+            # Residue like "Avyukt bansal (ft) 30/6" -> "Avyukt bansal 30/6".
+            new = _TRAILING_DATE_FRAGMENT_RE.sub("", new)
+            new = re.sub(r"\s+", " ", new).strip()
+
+            if status != "active":
+                n_marked += 1
+            if fast:
+                n_fast += 1
+            statuses.append(status)
+            cleaned_vals.append(new)
+            fast_flags.append(fast)
+
+        df["enrollment_status"] = statuses
+        df[col] = pd.Series(cleaned_vals, index=df.index, dtype="string")
+        if n_marked:
+            df["is_cancelled"] = [s in ("cancelled", "refunded") for s in statuses]
+            issues.append(
+                f"Derived enrollment_status from name markers for {n_marked} "
+                f"row(s); markers stripped before hashing"
+            )
+        if n_fast:
+            df["is_fast_track"] = fast_flags
+            issues.append(
+                f"Derived is_fast_track for {n_fast} row(s) from name notes"
+            )
 
     def _derive_funnel_flags(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
@@ -959,6 +1174,56 @@ class DataEngineerAgent:
                 )
             )
             df[col] = normalized.replace({"nan": np.nan, "none": np.nan, "": np.nan})
+        return df
+
+    def _apply_canonical_maps(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> pd.DataFrame:
+        """Collapse real-world vocabulary chaos onto canonical values.
+
+        Runs AFTER `_normalize_categoricals` (values are lowercased) and BEFORE
+        `_split_multivalue` (so list columns inherit canonical values).
+
+        - faculty: honorifics stripped + alias table ("yash kanodia sir" and
+          "yash k" merge; "yash" stays a different person).
+        - course: typo fixes + module-suffix extraction + family mapping. The
+          role column is OVERWRITTEN with the bounded `course family` (so EDA /
+          cross-tabs stop exploding past cardinality limits); the raw string is
+          preserved in `<col>_raw` and the module suffix in `course_module`.
+        """
+        fac_col = roles.get("faculty")
+        if fac_col and fac_col in df.columns and not pd.api.types.is_numeric_dtype(df[fac_col]):
+            canon = df[fac_col].map(canonical_maps.canonicalize_faculty)
+            changed = int((canon != df[fac_col]).fillna(False).sum())
+            if changed:
+                df[f"{fac_col}_raw"] = df[fac_col]
+                df[fac_col] = canon
+                issues.append(
+                    f"faculty '{fac_col}': canonicalized {changed} value(s) "
+                    f"(honorifics/aliases); raw kept in '{fac_col}_raw'"
+                )
+
+        course_col = roles.get("course")
+        if course_col and course_col in df.columns and not pd.api.types.is_numeric_dtype(df[course_col]):
+            pairs = df[course_col].map(canonical_maps.canonicalize_course)
+            families = pairs.map(lambda p: p[0])
+            modules = pairs.map(lambda p: p[1])
+            changed = int((families != df[course_col]).fillna(False).sum())
+            n_modules = int(modules.notna().sum())
+            if changed or n_modules:
+                df[f"{course_col}_raw"] = df[course_col]
+                df[course_col] = families
+                if n_modules:
+                    df["course_module"] = modules
+                before = int(df[f"{course_col}_raw"].nunique(dropna=True))
+                after = int(df[course_col].nunique(dropna=True))
+                issues.append(
+                    f"course '{course_col}': mapped to canonical families "
+                    f"({before} -> {after} distinct); raw kept in "
+                    f"'{course_col}_raw'"
+                    + (f"; module suffix extracted for {n_modules} row(s) "
+                       f"into 'course_module'" if n_modules else "")
+                )
         return df
 
     def _normalize_pincode(
