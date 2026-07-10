@@ -566,6 +566,41 @@ def test_amount_collected_derived() -> None:
     assert "amount_collected" not in df2.columns  # explicit paid wins
 
 
+def test_default_flag_derived() -> None:
+    # is_default = pending > 0 per enrollment. Negative pending (overpayment)
+    # and zero are NOT defaults; needs a numeric pending role.
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({"Amt Pending": [2000.0, 0.0, -500.0, 1.0]})
+    agent._derive_default_flag(df, {"pending": "Amt Pending"}, [])
+    assert list(df["is_default"]) == [True, False, False, True]
+
+    # No pending role -> no flag (conditional emission).
+    df2 = pd.DataFrame({"Total Fees": [10000.0]})
+    agent._derive_default_flag(df2, {"amount": "Total Fees"}, [])
+    assert "is_default" not in df2.columns
+
+
+def test_analyst_default_rate() -> None:
+    # default_rate is a per-enrollment rate off is_default, broken down by branch.
+    from agents.analyst_agent import AnalystAgent
+
+    analyst = AnalystAgent()
+    df = pd.DataFrame({
+        "is_default": [True, False, True, True, False],
+        "Branch": ["Pal", "Pal", "Adajan", "Adajan", "Adajan"],
+    })
+    package = {"canonical_columns": {"branch": "Branch"}}
+    res = analyst.run(
+        {"metric": "default_rate", "dimensions": ["branch"]}, package, df=df,
+    )
+    head = res["headline_number"]
+    assert head["metric"] == "default_rate", "default_rate fell back"
+    assert round(head["value"], 4) == 0.6  # 3 of 5
+    segs = {b["segment"]: b["value"] for b in res["breakdowns"]}
+    assert segs["branch=Pal"] == 0.5           # 1/2
+    assert round(segs["branch=Adajan"], 4) == round(2 / 3, 4)
+
+
 def test_analyst_collection_efficiency() -> None:
     # Money-weighted ratio of totals, overall + by branch.
     from agents.analyst_agent import AnalystAgent

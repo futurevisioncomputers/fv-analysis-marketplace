@@ -51,7 +51,8 @@ REGISTRY_VERSION = 1
 # Metrics where a LOWER value is the good direction (affects breach/trend framing).
 LOWER_IS_BETTER = ("dropout_rate", "pending_fee", "overdue_fee",
                    "certificate_delay_days", "certificate_issue_lag_days",
-                   "certificate_pending_rate", "not_coming_rate", "refund_rate")
+                   "certificate_pending_rate", "not_coming_rate", "refund_rate",
+                   "default_rate")
 
 # metric/dimension -> business area (mirrors insights_agent.BUSINESS_AREA).
 BUSINESS_AREA = {
@@ -68,6 +69,7 @@ BUSINESS_AREA = {
     "collection_efficiency": "Fees",
     "pending_fee": "Fees",
     "overdue_fee": "Fees",
+    "default_rate": "Fees",
     "average_fee_per_student": "Revenue",
     "certificate_delay_days": "Certificates",
     "certificate_issue_lag_days": "Certificates",
@@ -95,6 +97,8 @@ BUSINESS_RULES: Dict[str, List[tuple]] = {
     "certificate_pending_rate": [(">", 0.50, "critical"), (">", 0.30, "warning")],
     # Money-weighted collection efficiency (higher is better -> LOW value breaches).
     "collection_efficiency": [("<", 0.50, "critical"), ("<", 0.70, "warning")],
+    # Share of enrollments with an unpaid balance (lower is better).
+    "default_rate": [(">", 0.40, "critical"), (">", 0.25, "warning")],
 }
 
 # Statistical anomaly detection: for metrics WITHOUT hard KPI targets,

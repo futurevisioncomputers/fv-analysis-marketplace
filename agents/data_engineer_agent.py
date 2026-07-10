@@ -547,6 +547,7 @@ class DataEngineerAgent:
         df = self._parse_dates(df, roles, known_issues, date_format)
         df = self._normalize_money(df, roles, known_issues)
         self._derive_amount_collected(df, roles, known_issues)
+        self._derive_default_flag(df, roles, known_issues)
         df = self._normalize_discovered_numeric(df, roles, known_issues)
         df = self._normalize_categoricals(df, roles)
         df = self._apply_canonical_maps(df, roles, known_issues)
@@ -1040,6 +1041,28 @@ class DataEngineerAgent:
             f"Derived amount_collected = '{amount_col}' - '{pending_col}' "
             f"(collection_efficiency numerator)"
         )
+
+    def _derive_default_flag(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Flag each enrollment carrying an unpaid balance (pending > 0).
+
+        Enrollment-grain default: the share of students still owing money. This
+        is the per-row rate the Analyst breaks down by branch/course; the recon
+        table's default_aging is the complementary money-weighted / overdue view.
+        Only added when a numeric pending role exists. Negative pending is an
+        overpayment (not a default), so the strict `> 0` test excludes it.
+        """
+        pending_col = roles.get("pending")
+        if not pending_col or not pd.api.types.is_numeric_dtype(df[pending_col]):
+            return
+        df["is_default"] = df[pending_col].fillna(0) > 0
+        n_default = int(df["is_default"].sum())
+        if n_default:
+            issues.append(
+                f"Flagged {n_default} enrollment(s) with unpaid balance "
+                f"(is_default from '{pending_col}')"
+            )
 
     def _normalize_discovered_numeric(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]

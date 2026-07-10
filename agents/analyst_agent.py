@@ -58,6 +58,9 @@ METRIC_SPECS: Dict[str, JsonDict] = {
     "pending_fee": {"kind": "sum", "role": "pending"},
     "overdue_fee": {"kind": "sum", "role": "pending"},
     "average_fee_per_student": {"kind": "mean", "role": "amount"},
+    # share of enrollments still carrying an unpaid balance (pending > 0);
+    # is_default is set per-enrollment by the Data Engineer.
+    "default_rate": {"kind": "rate", "flag": "is_default"},
     # money-weighted collection efficiency = Σ collected / Σ billed. The
     # numerator is an explicit paid column when present, else amount_collected
     # (billed - pending) derived by the Data Engineer; denominator is billed total.
@@ -98,6 +101,7 @@ METRIC_FALLBACK = {
     "repeat_enrollment_rate": "admissions_confirmed",
     "certificate_pending_rate": "certificate_issue_lag_days",
     "collection_efficiency": "gross_fee_collected",
+    "default_rate": "pending_fee",
     "pending_fee": "gross_fee_collected",
     "overdue_fee": "pending_fee",
 }
