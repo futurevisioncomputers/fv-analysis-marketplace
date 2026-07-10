@@ -717,6 +717,50 @@ def test_report_phone_leak_detection() -> None:
     assert not _contains_mobile("total 12000 pincode 395007 on 2025-01-10")
 
 
+def test_prediction_blocks_thin_labels() -> None:
+    # Honesty gate: too few terminal labels -> blocked, no model invented.
+    from agents.prediction_agent import PredictionAgent
+    agent = PredictionAgent()
+    df = pd.DataFrame({
+        "completion_status": ["completed", "not_coming", "active", "active"],
+        "Branch": ["Pal", "Adajan", "Pal", "Adajan"],
+    })
+    res = agent.run({"canonical_columns": {"branch": "Branch"}}, df=df)
+    assert res["status"] == "blocked"
+    assert "labeled" in res["reason"].lower() or "terminal" in res["reason"].lower()
+
+
+def test_prediction_blocks_no_label() -> None:
+    # No completion signal at all -> blocked.
+    from agents.prediction_agent import PredictionAgent
+    agent = PredictionAgent()
+    df = pd.DataFrame({"Branch": ["Pal", "Adajan"] * 30})
+    res = agent.run({"canonical_columns": {"branch": "Branch"}}, df=df)
+    assert res["status"] == "blocked"
+    assert "completion label" in res["reason"].lower()
+
+
+def test_prediction_trains_and_beats_baseline() -> None:
+    # A feature that perfectly separates churn: NB must beat the 50% baseline and
+    # surface the churn-linked value as a top risk factor. Censored (active) rows
+    # are excluded from the label.
+    from agents.prediction_agent import PredictionAgent
+    agent = PredictionAgent()
+    n = 30
+    df = pd.DataFrame({
+        "completion_status": (["completed"] * n + ["not_coming"] * n + ["active"] * 5),
+        "Branch": (["Pal"] * n + ["Adajan"] * n + ["Pal"] * 5),
+    })
+    res = agent.run({"canonical_columns": {"branch": "Branch"}}, df=df)
+    assert res["status"] == "ready", res.get("reason")
+    assert res["n_labeled"] == 2 * n            # active rows excluded
+    assert res["class_balance"] == {"not_coming": n, "completed": n}
+    assert res["accuracy_lift"] > 0             # beats majority baseline
+    top = res["top_risk_factors"][0]
+    assert top["feature"] == "Branch" and top["value"] == "Adajan"
+    assert top["churn_log_likelihood_ratio"] > 0
+
+
 def main() -> int:
     failures = 0
     for name, fn in sorted(globals().items()):
