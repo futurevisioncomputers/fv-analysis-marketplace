@@ -824,6 +824,39 @@ def test_ingestion_snapshot_and_fetch() -> None:
             assert fh.read() == b"PK\x03\x04stub"
 
 
+def test_data_aware_question_pruning() -> None:
+    # Orchestrator salvages each question to a metric the columns support, and
+    # drops questions that collapse to a metric+dimension already answered.
+    from agents.orchestrator_agent import OrchestratorAgent
+
+    orch = OrchestratorAgent()
+    df = pd.DataFrame({
+        "is_repeat_enrollment": [True, False, True, False],
+        "branch": ["Pal", "Pal", "Adajan", "Adajan"],
+        "course": ["A", "B", "A", "B"],
+    })
+    roles = {"branch": "branch", "course": "course"}
+    questions = [
+        # asked metric (default_rate) not computable -> salvage to total_leads (count)
+        {"question_id": "BQ-001", "metrics": ["default_rate", "total_leads"],
+         "dimensions": ["branch"]},
+        # same (total_leads, branch) as BQ-001 -> redundant, dropped
+        {"question_id": "BQ-002", "metrics": ["total_leads"], "dimensions": ["branch"]},
+        # distinct computable metric -> kept
+        {"question_id": "BQ-003", "metrics": ["repeat_enrollment_rate"],
+         "dimensions": ["course"]},
+        # nothing computable (no fee columns) -> kept as-is, Analyst blocks honestly
+        {"question_id": "BQ-004", "metrics": ["collection_efficiency"],
+         "dimensions": ["branch"]},
+    ]
+    kept = orch._select_answerable_questions(questions, df, roles)
+    ids = [q["question_id"] for q in kept]
+    assert "BQ-002" not in ids                 # redundant duplicate dropped
+    assert {"BQ-001", "BQ-003", "BQ-004"} <= set(ids)
+    bq1 = next(q for q in kept if q["question_id"] == "BQ-001")
+    assert bq1["metrics"][0] == "total_leads"  # salvaged off uncomputable default_rate
+
+
 def test_problem_definition_metric_routing() -> None:
     # Free-text questions must route to the Analyst-computable metric (metrics[0])
     # AND the requested dimension (dimensions[0]) — the vocabulary sync + keyword

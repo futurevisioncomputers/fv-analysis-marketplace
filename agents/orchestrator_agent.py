@@ -220,6 +220,12 @@ class OrchestratorAgent:
                          or brief.get("business_questions") or [])
         else:
             questions = brief.get("business_questions") or []
+        # Data-aware pruning: swap each question to a metric the actual columns
+        # support, and drop questions that collapse to a metric+dimension already
+        # covered — so the report is not padded with identical record counts.
+        questions = self._select_answerable_questions(
+            questions, df, data_package.get("canonical_columns") or {}
+        )
         if max_questions is not None:
             questions = questions[:max_questions]
 
@@ -277,6 +283,48 @@ class OrchestratorAgent:
             state["errors"].append(f"Report generation failed: {exc}")
             state["report"] = None
         return state
+
+    # ================================================= data-aware question prune
+
+    def _select_answerable_questions(
+        self, questions: Sequence[Mapping[str, Any]], df, roles: Mapping[str, str]
+    ) -> List[JsonDict]:
+        """Salvage + dedupe questions against the columns that actually exist.
+
+        For each question, reorder its metric list so the FIRST metric is one the
+        Analyst can compute on this frame (a question asking for a metric the data
+        lacks is answered with the next best metric it carries, instead of being
+        skipped). Then drop any question that collapses to a metric+dimension pair
+        already covered — those would render identical numbers. The user's own
+        question (BQ-001) is always kept, never deduped away.
+
+        Falls back to the original list if df is missing (nothing to check against).
+        """
+        if df is None or not questions:
+            return list(questions)
+
+        analyst = self.analyst
+        seen: set = set()
+        kept: List[JsonDict] = []
+        for q in questions:
+            metrics = list(q.get("metrics") or [])
+            chosen = next(
+                (m for m in metrics if analyst.metric_computable(m, df, roles)), None
+            )
+            if chosen is None:
+                # Nothing computable — keep as-is; the Analyst blocks it honestly.
+                kept.append(dict(q))
+                continue
+            q = dict(q)
+            if metrics and chosen != metrics[0]:
+                q["metrics"] = [chosen] + [m for m in metrics if m != chosen]
+            dim = (q.get("dimensions") or ["overall"])[0]
+            key = (chosen, dim)
+            if key in seen and q.get("question_id") != "BQ-001":
+                continue  # redundant: same metric+dimension already answered
+            seen.add(key)
+            kept.append(q)
+        return kept or [dict(q) for q in questions]
 
     # ====================================================== per-question chain
 

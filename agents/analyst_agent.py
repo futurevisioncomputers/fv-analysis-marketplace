@@ -318,6 +318,25 @@ class AnalystAgent:
         # count
         return pd.Series(np.ones(len(df)), index=df.index), "count", None
 
+    def metric_computable(
+        self, metric: str, df: pd.DataFrame, roles: Mapping[str, str]
+    ) -> bool:
+        """True if `metric` can actually be computed on this frame's columns.
+
+        Used by the orchestrator to prune / salvage questions BEFORE running the
+        full analysis, so the report is not padded with questions that would only
+        block. A `count` metric is always computable (record count); rate/sum/
+        mean/ratio require their backing column(s) to be present.
+        """
+        spec = METRIC_SPECS.get(metric, {"kind": "count"})
+        series, _, denom = self._metric_series(df, metric, spec, roles)
+        if series is None:
+            return False
+        if spec.get("kind") == "ratio":
+            y, _x = self._ratio_pair(series, denom)
+            return len(y) > 0
+        return True
+
     # --------------------------------------------------------------- headline
 
     def _aggregate(self, kind: str, s: pd.Series,

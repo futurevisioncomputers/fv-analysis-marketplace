@@ -40,7 +40,9 @@ def wrap_goal(question: str) -> dict:
                 "end_date": f"{datetime.date.today().year + 1}-12-31",
                 "granularity": "month",
             },
-            "modules": {"admissions": {"enabled": True, "metrics": [], "dimensions": []}},
+            # No hardcoded module — let Problem Definition infer enabled modules
+            # from the question (so "fees / completion / certificates" questions
+            # actually enable those modules instead of admissions-only).
             "kpi_targets": {
                 "admission_growth_percent": 10,
                 "fee_collection_percent": 90,
