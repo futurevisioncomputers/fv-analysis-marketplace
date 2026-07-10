@@ -509,6 +509,52 @@ def test_analyst_new_metrics() -> None:
     assert head["n"] == 3
 
 
+def test_free_text_pii_scrub() -> None:
+    # Contact details typed inside retained free-text notes must be redacted;
+    # dates / pincodes / amounts / cheque numbers in the same text must survive.
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Status & reason": [
+            "gone to egypt, call 9825012345",         # bare 10-digit phone
+            "parent contact +91 98765 43210",         # formatted international
+            "shifted on 10/05/2025, pincode 395007",  # date + pincode: keep
+        ],
+        "Description": [
+            "paid via cheque no 445566",              # 6-digit cheque: keep
+            "refund, mail a.b@icici.com",             # email redact
+            "installment 12000 paid",                 # amount: keep
+        ],
+        "Total Fees": [12000.0, 5000.0, 8000.0],      # numeric col untouched
+    })
+    issues: list = []
+    agent._scrub_free_text_pii(
+        df, {"status_reason": "Status & reason", "description": "Description"}, issues
+    )
+    assert list(df["Status & reason"]) == [
+        "gone to egypt, call [mobile]",
+        "parent contact [mobile]",
+        "shifted on 10/05/2025, pincode 395007",
+    ]
+    assert list(df["Description"]) == [
+        "paid via cheque no 445566",
+        "refund, mail [email]",
+        "installment 12000 paid",
+    ]
+    assert list(df["Total Fees"]) == [12000.0, 5000.0, 8000.0]
+
+
+def test_report_phone_leak_detection() -> None:
+    # Report defence-in-depth must catch bare AND formatted phones, but never
+    # trip on Chart.js numeric literals (epoch ms, large values have no separators).
+    from agents.report_agent import _contains_mobile
+
+    assert _contains_mobile("<td>9825012345</td>")          # bare 10-digit
+    assert _contains_mobile("call +91 98765 43210 now")     # formatted intl
+    assert _contains_mobile("ph: 98765-43210")              # hyphenated
+    assert not _contains_mobile('{"data":[1704067200000, 1706745600000]}')
+    assert not _contains_mobile("total 12000 pincode 395007 on 2025-01-10")
+
+
 def main() -> int:
     failures = 0
     for name, fn in sorted(globals().items()):

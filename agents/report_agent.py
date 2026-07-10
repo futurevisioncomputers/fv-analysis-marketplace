@@ -43,11 +43,32 @@ DEFAULT_STYLE: JsonDict = {
 }
 
 CHARTJS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+# Bare 10-digit run (unbounded on both sides so an 11+ digit Chart.js epoch /
+# value never trips it — \b requires exactly ten).
 _MOBILE_RE = re.compile(r"\b\d{10}\b")
+# Formatted / international phone: digits split by +, spaces, brackets or hyphens.
+# JSON chart data has no such separators between digits, so this cannot match a
+# serialized Chart.js number — only a phone left in narrative or table text.
+_FORMATTED_PHONE_RE = re.compile(r"\+?\d[\d\s().\-]{8,14}\d")
+_PHONE_SEPARATORS = set(" +().-")
+
+
+def _contains_mobile(text: str) -> bool:
+    """True if a bare-10-digit or a formatted phone number survives in `text`."""
+    if _MOBILE_RE.search(text):
+        return True
+    for m in _FORMATTED_PHONE_RE.finditer(text):
+        run = m.group(0)
+        n_digits = sum(ch.isdigit() for ch in run)
+        # Require a separator so a pure 11-13 digit numeric literal (epoch ms, a
+        # large metric value in a chart config) is not mistaken for a phone.
+        if 10 <= n_digits <= 13 and any(ch in _PHONE_SEPARATORS for ch in run):
+            return True
+    return False
 
 
 class PIILeakError(RuntimeError):
-    """Raised if a 10-digit mobile pattern survives into the rendered HTML."""
+    """Raised if a mobile-number pattern survives into the rendered HTML."""
 
 
 class ReportAgent:
@@ -93,7 +114,7 @@ class ReportAgent:
         html_doc = self._render(fr, qresults, narrative, st, rtitle, generated_at, live)
 
         # Defence in depth: never let a raw mobile number escape in the document.
-        if _MOBILE_RE.search(html_doc):
+        if _contains_mobile(html_doc):
             raise PIILeakError("PII leak detected in report HTML; output withheld.")
 
         return {

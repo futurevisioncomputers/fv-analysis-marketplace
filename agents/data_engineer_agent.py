@@ -311,6 +311,23 @@ AGING_OVERDUE_BUCKET = "90+"
 _PERSON_NAME_NORM_RE = re.compile(r"[^a-z0-9 ]+")
 _NON_DIGIT_RE = re.compile(r"\D")
 
+# PII v2 — inline scrubbing of RETAINED free-text columns. Column-level hashing
+# (_mask_pii) masks whole PII columns; this catches a phone or email typed inside
+# an analytical note we keep (a Not_Coming "Status & reason", a receipt
+# Description) so no raw contact detail survives into the parquet or the report.
+# The pattern is deliberately permissive (spaces / +91 / brackets / hyphens); a
+# digit-count guard (>= _MIN_PHONE_DIGITS) then rejects dates, pincodes, ids and
+# fee amounts that share the same cell, so only real phone runs are redacted.
+_INLINE_PHONE_RE = re.compile(r"\+?\d[\d\s().\-]{8,14}\d")
+_INLINE_EMAIL_RE = re.compile(r"[\w.\-+]+@[\w\-]+\.[\w.\-]+")
+_MIN_PHONE_DIGITS = 10
+# Only columns whose header signals free text are scrubbed, so id / amount / date
+# columns are never mangled by a coincidental long digit run.
+_FREE_TEXT_HEADER_RE = re.compile(
+    r"remark|note|comment|reason|narration|particular|feedback|message|query|description",
+    re.IGNORECASE,
+)
+
 
 class DataEngineerAgent:
     """Cleans a source CSV into a canonical dataframe + quality report."""
@@ -580,6 +597,9 @@ class DataEngineerAgent:
         self._derive_person_id(df, roles, known_issues)
 
         canonical_columns = self._mask_pii(df, roles, known_issues)
+        # Whole PII columns are now hashed; scrub any contact detail typed inside
+        # a retained free-text note so no raw phone/email reaches the report.
+        self._scrub_free_text_pii(df, roles, known_issues)
         dedup_keys = self._dedupe(df, roles, known_issues)
 
         canonical_path = self._write_parquet(df, source_path)
@@ -1535,6 +1555,60 @@ class DataEngineerAgent:
             return np.nan
         digest = hashlib.sha256(f"{self.salt}:{value}".encode("utf-8")).hexdigest()
         return digest[:16]
+
+    def _scrub_free_text_pii(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Redact inline phone/email PII from retained free-text columns.
+
+        Whole PII columns are already hashed by `_mask_pii`; this handles contact
+        details typed INSIDE an analytical note we keep (a Not_Coming
+        "Status & reason", a receipt Description). Only free-text columns are
+        touched — a status_reason/description role or a header keyword match — so
+        id / amount / date columns are never mangled. Runs after masking, so a
+        hashed column (16-hex) is scanned harmlessly (no 10+ digit run to hit).
+        """
+        targets: set = set()
+        for role in ("status_reason", "description"):
+            col = roles.get(role)
+            if col and col in df.columns:
+                targets.add(col)
+        for col in df.columns:
+            if _FREE_TEXT_HEADER_RE.search(str(col)):
+                targets.add(col)
+
+        n_cells = 0
+        for col in targets:
+            series = df[col]
+            if not (series.dtype == object or pd.api.types.is_string_dtype(series)):
+                continue
+            scrubbed = series.map(self._scrub_inline_pii)
+            changed = int(
+                (scrubbed.astype("string").fillna("")
+                 != series.astype("string").fillna("")).sum()
+            )
+            if changed:
+                df[col] = scrubbed
+                n_cells += changed
+        if n_cells:
+            issues.append(
+                f"Scrubbed inline phone/email from {n_cells} free-text cell(s)"
+            )
+
+    @staticmethod
+    def _scrub_inline_pii(value: Any) -> Any:
+        """Replace phone runs (>= _MIN_PHONE_DIGITS digits) and emails with tokens."""
+        if not isinstance(value, str):
+            return value
+
+        def redact_phone(match: "re.Match[str]") -> str:
+            run = match.group(0)
+            if sum(ch.isdigit() for ch in run) >= _MIN_PHONE_DIGITS:
+                return "[mobile]"
+            return run
+
+        out = _INLINE_PHONE_RE.sub(redact_phone, value)
+        return _INLINE_EMAIL_RE.sub("[email]", out)
 
     # --------------------------------------------------------------- dedupe
 

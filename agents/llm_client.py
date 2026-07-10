@@ -37,8 +37,19 @@ ANTHROPIC_VERSION = "2023-06-01"
 REQUEST_TIMEOUT = 60  # seconds
 MAX_SAMPLE_ROWS = 8
 
-_MOBILE_RE = re.compile(r"\b\d{10}\b")
+# Phone runs — bare 10-digit and formatted / international (+91, spaces,
+# brackets, hyphens). Guarded by a
+# digit count at substitution time so dates / pincodes / amounts are left alone.
+_FORMATTED_PHONE_RE = re.compile(r"\+?\d[\d\s().\-]{8,14}\d")
+_MIN_PHONE_DIGITS = 10
 _EMAIL_RE = re.compile(r"[\w.\-+]+@[\w\-]+\.[\w.\-]+")
+
+
+def _redact_phone(match: "re.Match[str]") -> str:
+    run = match.group(0)
+    if sum(ch.isdigit() for ch in run) >= _MIN_PHONE_DIGITS:
+        return "[mobile]"
+    return run
 _PII_COL_RE = re.compile(
     r"name|mobile|phone|email|guardian|father|address|dob|birth|aadhaar|aadhar",
     re.IGNORECASE,
@@ -97,7 +108,7 @@ def available() -> bool:
 def mask_text(value: Any) -> str:
     """Scrub mobile-number and email patterns out of a free-text value."""
     s = "" if value is None else str(value)
-    s = _MOBILE_RE.sub("[mobile]", s)
+    s = _FORMATTED_PHONE_RE.sub(_redact_phone, s)
     s = _EMAIL_RE.sub("[email]", s)
     return s
 
