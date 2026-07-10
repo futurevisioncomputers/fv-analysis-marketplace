@@ -436,6 +436,45 @@ def test_no_ledger_no_reconciliation() -> None:
     assert agent._build_payment_reconciliation(packages, {"students": df}) is None
 
 
+def test_enquiry_conversion_cross_source() -> None:
+    # Enquiry on one sheet, admission on ANOTHER, linked by person_id (name+phone
+    # hash). A converts (cross-source), C converts (cross-source), B never admits.
+    agent = DataEngineerAgent(output_dir="output")
+    enquiries = pd.DataFrame({
+        "person_id": ["A", "B", "C"],
+        "is_enquiry": [True, True, True],
+    })
+    admissions = pd.DataFrame({
+        "person_id": ["A", "C", "D"],
+        "is_admitted": [True, True, True],
+    })
+    packages = [
+        {"source_name": "enquiries", "source_domain": "admission",
+         "canonical_columns": {}},
+        {"source_name": "admissions", "source_domain": "student",
+         "canonical_columns": {}},
+    ]
+    frames = {"enquiries": enquiries, "admissions": admissions}
+    summary = agent._build_enquiry_conversion(packages, frames)
+    assert summary is not None
+    assert summary["enquired_persons"] == 3
+    assert summary["converted_persons"] == 2          # A, C
+    assert summary["conversion_rate"] == round(2 / 3, 4)
+    assert summary["cross_source_conversions"] == 2   # both admitted elsewhere
+
+    tbl = pd.read_parquet(summary["table_path"]).set_index("person_id")
+    assert bool(tbl.loc["A", "cross_source"]) and not bool(tbl.loc["B", "converted"])
+
+
+def test_enquiry_conversion_no_enquiry_frame() -> None:
+    # Honesty gate: no is_enquiry flag anywhere -> None, nothing invented.
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({"person_id": ["A"], "is_admitted": [True]})
+    packages = [{"source_name": "students", "source_domain": "student",
+                 "canonical_columns": {}}]
+    assert agent._build_enquiry_conversion(packages, {"students": df}) is None
+
+
 # ------------------------------------------------------ person identity
 
 def test_person_id_repeat_enrollment() -> None:

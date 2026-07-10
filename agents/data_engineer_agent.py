@@ -421,6 +421,7 @@ class DataEngineerAgent:
         source_summary = self._source_summary(ready, frames, relationships)
         domain_metrics = self._domain_metrics(ready, frames)
         payment_reconciliation = self._build_payment_reconciliation(ready, frames)
+        enquiry_conversion = self._build_enquiry_conversion(ready, frames)
         canonical_columns = self._merged_roles(ready, merged)
         return {
             "status": "ready",
@@ -464,6 +465,9 @@ class DataEngineerAgent:
             # None when no finance ledger among sources — key present but empty,
             # so downstream agents can gate on it without inventing fee data.
             "payment_reconciliation": payment_reconciliation,
+            # None when no enquiry frame carries person_id — enquiry->admission
+            # conversion linked across sheets by the person_id (name+phone) hash.
+            "enquiry_conversion": enquiry_conversion,
         }
 
     def run(
@@ -2231,6 +2235,68 @@ class DataEngineerAgent:
             ]
             summary["overdue_90plus_amount"] = float(overdue.sum(skipna=True))
         return summary
+
+    def _build_enquiry_conversion(
+        self, packages: Sequence[JsonDict], frames: Mapping[str, pd.DataFrame]
+    ) -> Optional[JsonDict]:
+        """Person-grain enquiry->admission conversion linked across sources.
+
+        The link key is `person_id` (a salted hash of normalized name + last-10
+        phone digits emitted per frame), so an enquiry recorded on one sheet and
+        the admission recorded on another are matched by the same person even
+        with no shared row id. A person is `enquired` if is_enquiry is set on any
+        frame, `converted` if is_admitted is set on any frame. `cross_source`
+        counts conversions whose admission came from a DIFFERENT source than the
+        enquiry — the payoff of the phone link. Emits None when no frame carries
+        both person_id and an is_enquiry flag (nothing to convert).
+        """
+        enquiry_source: Dict[str, str] = {}
+        admitted_sources: Dict[str, set] = {}
+        have_enquiry = False
+        for pkg in packages:
+            frame = frames.get(pkg.get("source_name"))
+            if frame is None or "person_id" not in frame.columns:
+                continue
+            src = str(pkg.get("source_name"))
+            pid = frame["person_id"].astype("string")
+            valid = pid.notna() & (pid != "")
+            if "is_enquiry" in frame.columns:
+                have_enquiry = True
+                mask = valid & frame["is_enquiry"].fillna(False).astype(bool)
+                for p in pid[mask].dropna().unique():
+                    enquiry_source.setdefault(str(p), src)
+            if "is_admitted" in frame.columns:
+                mask = valid & frame["is_admitted"].fillna(False).astype(bool)
+                for p in pid[mask].dropna().unique():
+                    admitted_sources.setdefault(str(p), set()).add(src)
+        if not have_enquiry or not enquiry_source:
+            return None
+
+        rows = []
+        cross = 0
+        for pid, src in enquiry_source.items():
+            adm = admitted_sources.get(pid, set())
+            converted = bool(adm)
+            cross_source = bool(adm - {src})
+            cross += int(cross_source)
+            rows.append({
+                "person_id": pid,
+                "enquiry_source": src,
+                "converted": converted,
+                "cross_source": cross_source,
+            })
+        conv = pd.DataFrame(rows)
+        path = self._write_parquet(conv, "enquiry_conversion.csv")
+
+        n_enq = int(len(conv))
+        n_conv = int(conv["converted"].sum())
+        return {
+            "table_path": path,
+            "enquired_persons": n_enq,
+            "converted_persons": n_conv,
+            "conversion_rate": round(n_conv / n_enq, 4) if n_enq else 0.0,
+            "cross_source_conversions": cross,
+        }
 
     def _derive_default_aging(self, recon: pd.DataFrame) -> None:
         """Tag each debtor (pending > 0) with a days-since-last-payment bucket.
