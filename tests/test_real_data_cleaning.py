@@ -773,6 +773,13 @@ def test_gsheet_url_normalization() -> None:
     # Already-published CSV URL is left alone.
     pub = "https://docs.google.com/spreadsheets/d/e/2PACX/pub?output=csv"
     assert normalize_gsheet_url(pub) == pub
+    # Publish-to-web HTML embed (pubhtml + &amp; entities) -> CSV variant.
+    embed = ("https://docs.google.com/spreadsheets/d/e/2PACX/pubhtml"
+             "?gid=1312780133&amp;single=true&amp;widget=true")
+    out = normalize_gsheet_url(embed)
+    assert "/pub?" in out and "output=csv" in out
+    assert "gid=1312780133" in out and "single=true" in out
+    assert "pubhtml" not in out and "&amp;" not in out
     # Non-Google http(s) endpoint passes through (raw CSV endpoint).
     raw = "https://example.com/data/report.csv"
     assert normalize_gsheet_url(raw) == raw

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -34,7 +35,9 @@ def wrap_goal(question: str) -> dict:
             },
             "time_window": {
                 "start_date": "2010-01-01",
-                "end_date": "2025-12-31",
+                # End a year out so current + near-future dated rows are in-window
+                # (a hardcoded past year silently filters out this-year data).
+                "end_date": f"{datetime.date.today().year + 1}-12-31",
                 "granularity": "month",
             },
             "modules": {"admissions": {"enabled": True, "metrics": [], "dimensions": []}},

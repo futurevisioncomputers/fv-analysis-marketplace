@@ -14,6 +14,7 @@ just resolves a Sheet URL down to one of those, so nothing downstream changes.
 from __future__ import annotations
 
 import datetime
+import html
 import os
 import re
 import urllib.parse
@@ -31,42 +32,55 @@ _FETCH_TIMEOUT = 30  # seconds
 def normalize_gsheet_url(url: str) -> str:
     """Return a CSV-export URL for a Google Sheets link.
 
-    - A URL already shaped for CSV (``/pub?output=csv`` or ``format=csv``) is
-      returned unchanged.
-    - A normal ``/edit`` / ``/view`` URL (``/spreadsheets/d/<id>/edit#gid=N``)
-      is rewritten to ``/export?format=csv&gid=N`` — the single-tab CSV export.
-    - A non-Google ``http(s)`` URL is passed through as-is (lets a raw CSV
-      endpoint work too).
+    Handles the three shapes a user pastes:
 
-    Raises ValueError for a non-http(s) scheme (blocks ``file://`` and friends,
-    keeping the fetch limited to the web).
+    - **Edit / view** (``/spreadsheets/d/<id>/edit#gid=N``) -> rewritten to
+      ``/export?format=csv&gid=N`` (the single-tab CSV export).
+    - **Publish-to-web** (``/spreadsheets/d/e/<token>/pubhtml?gid=N&single=true``,
+      the HTML embed) -> rewritten to ``.../pub?output=csv&gid=N&single=true``.
+      An already-CSV ``/pub?output=csv`` link is left as-is.
+    - **Non-Google http(s)** URL -> passed through (a raw CSV endpoint works too).
+
+    ``&amp;`` entities from a copied "embed" URL are decoded first. Raises
+    ValueError for a non-http(s) scheme (blocks ``file://`` and friends).
     """
-    parsed = urllib.parse.urlparse(url.strip())
+    raw = html.unescape(url.strip())
+    parsed = urllib.parse.urlparse(raw)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"Sheet URL must be http(s): {url!r}")
     if _GSHEET_HOST not in parsed.netloc:
-        return url  # some other http(s) CSV endpoint — trust the caller
+        return raw  # some other http(s) CSV endpoint — trust the caller
 
     query = urllib.parse.parse_qs(parsed.query)
-    already_csv = (
-        "/pub" in parsed.path
-        or query.get("output") == ["csv"]
-        or query.get("format") == ["csv"]
-    )
-    if already_csv:
-        return url
-
-    match = _SPREADSHEET_ID_RE.search(parsed.path)
-    if not match:
-        raise ValueError(f"Could not find a spreadsheet id in URL: {url!r}")
-    sheet_id = match.group(1)
-
     gid: Optional[str] = None
     frag = _GID_RE.search(parsed.fragment or "")
     if frag:
         gid = frag.group(1)
     elif "gid" in query:
         gid = query["gid"][0]
+
+    # Publish-to-web link (…/pub or …/pubhtml). Force the CSV variant.
+    if "/pub" in parsed.path:
+        if query.get("output") == ["csv"]:
+            return raw
+        path = parsed.path.replace("/pubhtml", "/pub")
+        params = [("output", "csv")]
+        if gid is not None:
+            params.append(("gid", gid))
+        if "single" in query:
+            params.append(("single", "true"))
+        new_query = urllib.parse.urlencode(params)
+        return urllib.parse.urlunparse(
+            (parsed.scheme, parsed.netloc, path, "", new_query, "")
+        )
+
+    if query.get("format") == ["csv"]:
+        return raw  # already an /export?format=csv link
+
+    match = _SPREADSHEET_ID_RE.search(parsed.path)
+    if not match:
+        raise ValueError(f"Could not find a spreadsheet id in URL: {url!r}")
+    sheet_id = match.group(1)
 
     export = f"https://{_GSHEET_HOST}/spreadsheets/d/{sheet_id}/export?format=csv"
     if gid is not None:
