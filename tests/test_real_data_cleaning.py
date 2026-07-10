@@ -601,6 +601,44 @@ def test_analyst_default_rate() -> None:
     assert round(segs["branch=Adajan"], 4) == round(2 / 3, 4)
 
 
+def test_duplicate_certificate_flag() -> None:
+    # Same certificate serial on two rows is a duplicate; blanks are NOT (a
+    # missing number is a pending certificate, handled elsewhere).
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({"Cert No": ["FV-1", "FV-2", "FV-1", None, ""]})
+    agent._derive_duplicate_certificate(df, {"certificate_number": "Cert No"}, [])
+    assert list(df["is_duplicate_certificate"]) == [True, False, True, False, False]
+
+    # No duplicates -> no flag column (conditional emission).
+    df2 = pd.DataFrame({"Cert No": ["FV-1", "FV-2", None]})
+    agent._derive_duplicate_certificate(df2, {"certificate_number": "Cert No"}, [])
+    assert "is_duplicate_certificate" not in df2.columns
+
+
+def test_enquiry_backlog_flag() -> None:
+    # Stale (> 30d as-of latest enquiry) unconverted enquiry = backlog. Admitted
+    # or recent enquiries are not backlog. As-of is the frame's own latest date.
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Timestamp": pd.to_datetime(
+            ["2025-01-01", "2025-02-01", "2025-06-01", "2025-06-10"]
+        ),
+        "is_admitted": [False, True, False, False],
+    })
+    # latest enquiry = 2025-06-10. Row0 (161d, not admitted) backlog; row1
+    # admitted -> no; row2 (9d) too recent -> no; row3 (0d) -> no.
+    agent._derive_enquiry_backlog(df, {"enquiry_date": "Timestamp"}, [])
+    assert list(df["is_enquiry_backlog"]) == [True, False, False, False]
+
+    # All recent -> no flag column.
+    df2 = pd.DataFrame({
+        "Timestamp": pd.to_datetime(["2025-06-01", "2025-06-10"]),
+        "is_admitted": [False, False],
+    })
+    agent._derive_enquiry_backlog(df2, {"enquiry_date": "Timestamp"}, [])
+    assert "is_enquiry_backlog" not in df2.columns
+
+
 def test_analyst_collection_efficiency() -> None:
     # Money-weighted ratio of totals, overall + by branch.
     from agents.analyst_agent import AnalystAgent

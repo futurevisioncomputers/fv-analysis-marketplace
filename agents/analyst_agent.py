@@ -79,6 +79,10 @@ METRIC_SPECS: Dict[str, JsonDict] = {
     # certificates
     "certificate_pending_rate": {"kind": "rate", "flag": "is_certificate_pending"},
     "certificate_issue_lag_days": {"kind": "mean", "role": "certificate_delay_days"},
+    # share of certificate rows sharing a duplicate serial (integrity red flag).
+    "duplicate_certificate_rate": {"kind": "rate", "flag": "is_duplicate_certificate"},
+    # admissions pipeline hygiene: share of enquiries stale + unconverted.
+    "enquiry_backlog_rate": {"kind": "rate", "flag": "is_enquiry_backlog"},
     # generic time-to-event
     "lead_to_admission_days": {"kind": "mean", "role": "lead_to_admission_days"},
 }
@@ -100,6 +104,8 @@ METRIC_FALLBACK = {
     "completion_rate": "not_coming_rate",
     "repeat_enrollment_rate": "admissions_confirmed",
     "certificate_pending_rate": "certificate_issue_lag_days",
+    "duplicate_certificate_rate": "certificate_pending_rate",
+    "enquiry_backlog_rate": "admission_conversion_rate",
     "collection_efficiency": "gross_fee_collected",
     "default_rate": "pending_fee",
     "pending_fee": "gross_fee_collected",

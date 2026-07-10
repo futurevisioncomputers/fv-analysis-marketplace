@@ -52,7 +52,8 @@ REGISTRY_VERSION = 1
 LOWER_IS_BETTER = ("dropout_rate", "pending_fee", "overdue_fee",
                    "certificate_delay_days", "certificate_issue_lag_days",
                    "certificate_pending_rate", "not_coming_rate", "refund_rate",
-                   "default_rate")
+                   "default_rate", "duplicate_certificate_rate",
+                   "enquiry_backlog_rate")
 
 # metric/dimension -> business area (mirrors insights_agent.BUSINESS_AREA).
 BUSINESS_AREA = {
@@ -74,6 +75,8 @@ BUSINESS_AREA = {
     "certificate_delay_days": "Certificates",
     "certificate_issue_lag_days": "Certificates",
     "certificate_pending_rate": "Certificates",
+    "duplicate_certificate_rate": "Certificates",
+    "enquiry_backlog_rate": "Admissions",
     "review_rating": "Reviews",
     "branch": "Branch Performance",
     "source": "Marketing",
@@ -99,6 +102,10 @@ BUSINESS_RULES: Dict[str, List[tuple]] = {
     "collection_efficiency": [("<", 0.50, "critical"), ("<", 0.70, "warning")],
     # Share of enrollments with an unpaid balance (lower is better).
     "default_rate": [(">", 0.40, "critical"), (">", 0.25, "warning")],
+    # Duplicate certificate serials — zero tolerance; any occurrence is a breach.
+    "duplicate_certificate_rate": [(">", 0.05, "critical"), (">", 0.0, "warning")],
+    # Stale unconverted enquiries clogging the pipeline (lower is better).
+    "enquiry_backlog_rate": [(">", 0.50, "critical"), (">", 0.30, "warning")],
 }
 
 # Statistical anomaly detection: for metrics WITHOUT hard KPI targets,

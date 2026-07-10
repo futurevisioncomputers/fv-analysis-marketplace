@@ -306,6 +306,11 @@ RECON_TOLERANCE = 1.0
 AGING_BUCKETS = ((30, "0-30"), (60, "31-60"), (90, "61-90"))
 AGING_OVERDUE_BUCKET = "90+"
 
+# An enquiry with no admission that is older than this many days (relative to the
+# frame's own latest enquiry, since the export is historical) is a stale backlog
+# lead. 30 days = roughly one intake cycle without follow-through.
+ENQUIRY_BACKLOG_DAYS = 30
+
 # person_id key normalization: names keep letters/digits/spaces only; phones
 # keep the last 10 digits (drops +91 / spaces / hyphens / float ".0" artifacts).
 _PERSON_NAME_NORM_RE = re.compile(r"[^a-z0-9 ]+")
@@ -1135,6 +1140,8 @@ class DataEngineerAgent:
         self._derive_lifecycle_status(df, roles, issues)
         self._derive_funnel_flags(df, roles, issues)
         self._derive_certificate_flags(df, roles, issues)
+        self._derive_duplicate_certificate(df, roles, issues)
+        self._derive_enquiry_backlog(df, roles, issues)
 
     def _derive_lifecycle_status(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
@@ -1281,6 +1288,71 @@ class DataEngineerAgent:
         pending = int(df["is_certificate_pending"].sum())
         if pending:
             issues.append(f"Flagged {pending} pending certificate(s)")
+
+    def _derive_duplicate_certificate(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Flag certificate numbers issued more than once (integrity red flag).
+
+        A repeated certificate_number means the same serial was assigned to two
+        rows — a clerical error or worse. Blanks are ignored (a missing number is
+        `is_certificate_pending`, not a duplicate). Only runs when the sheet
+        carries a certificate_number role.
+        """
+        cert_col = roles.get("certificate_number")
+        if not cert_col or cert_col not in df.columns:
+            return
+        key = df[cert_col].astype("string").str.strip()
+        key = key.where(key.notna() & (key != ""), other=pd.NA)
+        dup = key.notna() & key.duplicated(keep=False)
+        if not dup.any():
+            return
+        df["is_duplicate_certificate"] = dup
+        n_rows = int(dup.sum())
+        n_numbers = int(key[dup].nunique())
+        issues.append(
+            f"Flagged {n_rows} row(s) sharing {n_numbers} duplicate "
+            f"certificate number(s) in '{cert_col}'"
+        )
+
+    def _derive_enquiry_backlog(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Flag stale, unconverted enquiries (is_enquiry_backlog).
+
+        Backlog = an enquiry with no admission whose enquiry date is older than
+        ENQUIRY_BACKLOG_DAYS relative to the frame's own latest enquiry (the
+        export is historical, so wall-clock would overstate every age). Needs an
+        enquiry_date role; admission is read from is_admitted when present, else
+        from an admission/joining date column.
+        """
+        enq_col = roles.get("enquiry_date")
+        if not enq_col or not pd.api.types.is_datetime64_any_dtype(df[enq_col]):
+            return
+        enq = df[enq_col]
+        as_of = enq.max()
+        if pd.isna(as_of):
+            return
+        age = (as_of - enq).dt.days
+
+        if "is_admitted" in df.columns:
+            admitted = df["is_admitted"].fillna(False)
+        else:
+            adm_col = roles.get("admission_date") or roles.get("joining_date")
+            admitted = (
+                df[adm_col].notna()
+                if adm_col and pd.api.types.is_datetime64_any_dtype(df[adm_col])
+                else pd.Series(False, index=df.index)
+            )
+
+        backlog = enq.notna() & ~admitted & (age > ENQUIRY_BACKLOG_DAYS)
+        if not backlog.any():
+            return
+        df["is_enquiry_backlog"] = backlog
+        issues.append(
+            f"Flagged {int(backlog.sum())} stale enquir(ies) unconverted "
+            f">{ENQUIRY_BACKLOG_DAYS}d (is_enquiry_backlog)"
+        )
 
     def _split_multivalue(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
