@@ -72,6 +72,49 @@ def _render_from_json(path: str, out: str) -> int:
     return 0
 
 
+def _run_clean_only(csv_path: str, data_sources, out: str) -> int:
+    """Data Engineer only: clean + PII-mask, write a canonical CSV + quality."""
+    import pandas as pd
+
+    from agents.data_engineer_agent import DataEngineerAgent
+
+    engine = DataEngineerAgent()
+    if data_sources:
+        pkg = engine.run_sources({}, data_sources)
+    else:
+        pkg = engine.run({}, csv_path)
+
+    if pkg.get("status") == "blocked":
+        reason = (pkg.get("quality_report") or {}).get("known_issues") or [
+            pkg.get("reason", "cleaning blocked")
+        ]
+        print("error: cleaning blocked", file=sys.stderr)
+        print(json.dumps(reason, indent=2, default=str), file=sys.stderr)
+        return 1
+
+    # The canonical frame is already PII-masked (names/mobiles/email hashed).
+    df = pd.read_parquet(pkg["canonical_df_path"])
+    df.to_csv(out, encoding="utf-8", index=False)
+
+    qr = pkg.get("quality_report") or {}
+    issues = list(qr.get("known_issues") or [])
+    # Multi-source keeps per-sheet notes (incl. PII masking) in source_packages.
+    for sp in pkg.get("source_packages") or []:
+        issues.extend((sp.get("quality_report") or {}).get("known_issues") or [])
+    masked = sum(1 for s in issues if "mask" in str(s).lower() or "hash" in str(s).lower())
+    print(f"Cleaned CSV written: {os.path.abspath(out)}")
+    print(f"  rows: {pkg.get('row_count')} - columns: {len(df.columns)}")
+    print(f"  roles mapped: {len(pkg.get('canonical_columns') or {})}"
+          f" - PII fields masked: {masked}")
+    if issues:
+        print(f"  quality notes ({len(issues)}):")
+        for note in issues[:15]:
+            print(f"    - {note}")
+        if len(issues) > 15:
+            print(f"    ... (+{len(issues) - 15} more)")
+    return 0
+
+
 def _build_data_sources(args) -> list:
     """Build normalized source descriptors for Excel sheets and named CSVs."""
     sources = []
@@ -180,6 +223,11 @@ def main(argv=None) -> int:
                     help="Path to also dump the run JSON.")
     ap.add_argument("--from-json", default=None,
                     help="Render the report from a saved run JSON; skips the pipeline.")
+    ap.add_argument("--clean-only", action="store_true",
+                    help="Run Data Engineer only: clean + PII-mask the sheet(s) and "
+                         "write a canonical CSV + quality report. No analysis.")
+    ap.add_argument("--clean-out", default="cleaned.csv",
+                    help="Output CSV path for --clean-only (default cleaned.csv).")
     args = ap.parse_args(argv)
 
     if args.from_json:
@@ -213,6 +261,9 @@ def main(argv=None) -> int:
             print("error: no usable sources found", file=sys.stderr)
             return 2
         csv_path = data_sources[0].get("path_or_query", "")
+
+    if args.clean_only:
+        return _run_clean_only(csv_path, data_sources, args.clean_out)
 
     goal = wrap_goal(args.question.strip())
     state = OrchestratorAgent().run(
