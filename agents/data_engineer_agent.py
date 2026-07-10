@@ -311,6 +311,20 @@ AGING_OVERDUE_BUCKET = "90+"
 # lead. 30 days = roughly one intake cycle without follow-through.
 ENQUIRY_BACKLOG_DAYS = 30
 
+# Derived columns the downstream agents (Analyst rate/mean metrics, Prediction,
+# Monitoring) look up by their BARE name. A left join prefixes right-source
+# columns to `<source>__<col>`, so after a multi-sheet merge these only exist
+# prefixed and the metric silently skips. They are coalesced back to the bare
+# name on the merged master (first non-null across sources, since a student
+# belongs to one source per flag — e.g. exactly one timetable tab).
+COALESCE_DERIVED_COLUMNS = (
+    "completion_status", "is_completed", "is_not_coming", "is_default",
+    "is_certificate_pending", "certificate_delay_days", "is_duplicate_certificate",
+    "is_enquiry_backlog", "is_admitted", "is_enquiry", "is_repeat_enrollment",
+    "person_enrollment_count", "is_cancelled", "is_fee_paid", "is_fast_track",
+    "amount_collected", "enrollment_status",
+)
+
 # person_id key normalization: names keep letters/digits/spaces only; phones
 # keep the last 10 digits (drops +91 / spaces / hyphens / float ".0" artifacts).
 _PERSON_NAME_NORM_RE = re.compile(r"[^a-z0-9 ]+")
@@ -1845,6 +1859,10 @@ class DataEngineerAgent:
                     f"Source '{name}' not joined: {detail.get('reason', 'unsafe join')}"
                 )
 
+        # Bring join-prefixed derived flags/columns back to their bare names so
+        # the Analyst / Prediction / Monitoring metrics compute on the merged frame.
+        self._coalesce_derived_columns(master)
+
         if "source_name" not in master.columns:
             master["source_name"] = master_name
         if "source_domain" not in master.columns:
@@ -1861,6 +1879,29 @@ class DataEngineerAgent:
             ],
         }
         return master, relationships, issues
+
+    def _coalesce_derived_columns(self, master: pd.DataFrame) -> None:
+        """Coalesce join-prefixed derived columns back to their bare names.
+
+        For each known derived column, if it only exists as `<source>__<col>`
+        after the merge, build the bare `<col>` by taking the first non-null value
+        across the master's own column (if any) and every prefixed variant. A
+        student belongs to one source per flag (e.g. exactly one timetable tab),
+        so first-non-null is unambiguous. Prefixed columns are left in place for
+        provenance; nothing is dropped.
+        """
+        for canonical in COALESCE_DERIVED_COLUMNS:
+            prefixed = [
+                c for c in master.columns
+                if c != canonical and c.endswith(f"__{canonical}")
+            ]
+            if not prefixed:
+                continue
+            candidates = ([canonical] if canonical in master.columns else []) + prefixed
+            coalesced = master[candidates[0]]
+            for col in candidates[1:]:
+                coalesced = coalesced.where(coalesced.notna(), master[col])
+            master[canonical] = coalesced
 
     def _choose_master_source(self, packages: Sequence[JsonDict]) -> str:
         def score(pkg):

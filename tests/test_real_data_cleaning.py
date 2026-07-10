@@ -824,6 +824,30 @@ def test_ingestion_snapshot_and_fetch() -> None:
             assert fh.read() == b"PK\x03\x04stub"
 
 
+def test_coalesce_join_prefixed_flags() -> None:
+    # After a multi-sheet join the derived flags exist only as source__col; they
+    # must be coalesced back to bare names (first non-null across sources) so the
+    # Analyst metrics compute on the merged master.
+    agent = DataEngineerAgent(output_dir="output")
+    master = pd.DataFrame({
+        "student_id": [1, 2, 3],
+        # a student is in exactly one timetable tab -> one non-null per row
+        "course_completed__completion_status": ["completed", None, None],
+        "not_coming__completion_status": [None, "not_coming", None],
+        "main_data__completion_status": [None, None, "active"],
+        # a single fee-rollup source contributes is_default
+        "fees_rollup__is_default": [False, True, True],
+    })
+    agent._coalesce_derived_columns(master)
+    assert list(master["completion_status"]) == ["completed", "not_coming", "active"]
+    assert list(master["is_default"]) == [False, True, True]
+
+    # No prefixed variant -> nothing added (conditional).
+    plain = pd.DataFrame({"student_id": [1], "branch": ["Pal"]})
+    agent._coalesce_derived_columns(plain)
+    assert "completion_status" not in plain.columns
+
+
 def test_data_aware_question_pruning() -> None:
     # Orchestrator salvages each question to a metric the columns support, and
     # drops questions that collapse to a metric+dimension already answered.
