@@ -25,38 +25,43 @@ JsonDict = Dict[str, Any]
 
 MODULE_DEFINITIONS: Dict[str, JsonDict] = {
     "admissions": {
+        # Only metrics the Analyst can actually compute (analyst_agent.METRIC_SPECS)
+        # belong here — a metric the brief promises but Agent 4 cannot compute is
+        # skipped downstream, so listing it just weakens the report.
         "metrics": [
             "total_leads",
             "qualified_leads",
-            "applications_received",
             "admissions_confirmed",
             "admission_conversion_rate",
-            "walk_in_count",
             "counselling_to_admission_rate",
+            "walk_in_count",
+            "lead_to_admission_days",
+            "enquiry_backlog_rate",
         ],
-        "dimensions": ["branch", "course", "counsellor", "lead_source", "city", "campaign"],
+        # Dimensions use canonical ROLE names (branch/course/faculty/source/…) so
+        # the Analyst resolves them to real columns; "counsellor"/"lead_source"
+        # are not roles and would silently break the breakdown.
+        "dimensions": ["branch", "course", "faculty", "source", "city", "course_category"],
         "datasets": ["leads", "enquiries", "admissions"],
         "questions": [
-            "How are total leads, qualified leads, applications, and confirmed admissions trending over the selected period?",
-            "Which branch, course, counsellor, lead source, city, or campaign is driving admission growth or decline?",
-            "Where is the funnel dropping from lead to counselling to admission?",
+            "How are total leads, qualified leads, and confirmed admissions trending over the selected period?",
+            "Which branch, course, faculty, or lead source is driving admission conversion up or down?",
+            "How large is the enquiry backlog of unconverted leads, and how long does lead-to-admission take?",
         ],
     },
     "counselling": {
         "metrics": [
-            "counselling_sessions",
-            "follow_up_count",
-            "demo_attended",
-            "lead_response_time",
-            "conversion_rate_per_counsellor",
-            "lost_leads",
+            "counselling_to_admission_rate",
+            "admission_conversion_rate",
+            "enquiry_backlog_rate",
+            "lead_to_admission_days",
         ],
-        "dimensions": ["counsellor", "branch", "course", "lead_source"],
+        "dimensions": ["faculty", "branch", "course", "source"],
         "datasets": ["leads", "enquiries", "counselling"],
         "questions": [
-            "Which counsellors have the highest and lowest counselling-to-admission conversion?",
-            "Are follow-ups, demo attendance, or lead response time affecting conversion?",
-            "Which lead sources or courses create the most lost leads?",
+            "Which counsellors (faculty) have the highest and lowest counselling-to-admission conversion?",
+            "How large is the unconverted enquiry backlog by counsellor and source?",
+            "Which lead sources or courses take longest to convert to admission?",
         ],
     },
     "fee_management": {
@@ -64,48 +69,45 @@ MODULE_DEFINITIONS: Dict[str, JsonDict] = {
             "gross_fee_collected",
             "pending_fee",
             "overdue_fee",
-            "installment_collection_rate",
+            "collection_efficiency",
+            "default_rate",
             "average_fee_per_student",
-            "discount_amount",
-            "refund_amount",
         ],
-        "dimensions": ["branch", "course", "payment_mode", "batch"],
+        "dimensions": ["branch", "course", "payment_mode", "faculty"],
         "datasets": ["students", "admissions", "fee_receipts"],
         "questions": [
-            "How much fee is collected, pending, overdue, discounted, or refunded by branch, course, payment mode, and batch?",
-            "Which segments are causing pending or overdue fee risk?",
-            "Is installment collection on track against target?",
+            "How much fee is collected, pending, and overdue by branch, course, and payment mode?",
+            "What is fee collection efficiency and the default rate by branch and course?",
+            "Which segments carry the most pending or overdue fee risk?",
         ],
     },
     "courses": {
         "metrics": [
-            "course_enrollment",
-            "active_students",
-            "completed_students",
-            "dropouts",
-            "course_completion_rate",
+            "completion_rate",
+            "dropout_rate",
+            "not_coming_rate",
+            "repeat_enrollment_rate",
         ],
-        "dimensions": ["course", "trainer", "batch", "branch"],
+        "dimensions": ["course", "faculty", "branch", "course_category"],
         "datasets": ["students", "courses", "batches"],
         "questions": [
-            "Which courses, trainers, batches, or branches have high enrollment, completion, or dropout issues?",
-            "How are active, completed, and dropout students trending?",
-            "Where is course completion below target?",
+            "Which courses, faculty, or branches have the highest completion, dropout, or not-coming rates?",
+            "What share of students churn (not coming) versus complete, by course and faculty?",
+            "Which courses see the most repeat enrollment (returning students)?",
         ],
     },
     "certificates": {
         "metrics": [
-            "certificates_issued",
-            "certificate_pending",
-            "course_completion_count",
-            "certificate_issue_time",
+            "certificate_pending_rate",
+            "certificate_issue_lag_days",
+            "duplicate_certificate_rate",
         ],
-        "dimensions": ["course", "batch", "branch"],
+        "dimensions": ["course", "branch", "faculty"],
         "datasets": ["students", "courses", "batches", "certificates"],
         "questions": [
-            "How many certificates are issued or pending by course, batch, and branch?",
-            "Where is certificate issue time increasing?",
-            "Are completed students receiving certificates on time?",
+            "What share of certificates are pending by course, branch, and faculty?",
+            "How fast are certificates issued after completion (issue lag), and where is it worst?",
+            "Are any certificate numbers duplicated (a data-integrity risk)?",
         ],
     },
     "student_reviews": {
@@ -129,27 +131,62 @@ MODULE_DEFINITIONS: Dict[str, JsonDict] = {
 
 # Keyword -> metric, to steer a free-text question onto a specific metric. The
 # matched metric is moved to position 0 so the Analyst (which picks metrics[0])
-# computes what the user actually asked about. Order matters: more specific
-# phrases first (checked top-down).
+# computes what the user actually asked about. Order matters: more SPECIFIC
+# phrases first (checked top-down, first match wins), so a narrow metric like
+# collection_efficiency is tried before the generic "collected". Every metric
+# here is one analyst_agent.METRIC_SPECS can actually compute.
 METRIC_KEYWORDS: List[tuple] = [
+    # --- certificates (specific cert phrases before anything generic) ---
+    ("duplicate_certificate_rate",
+     ("duplicat", "duplicate certificate", "duplicate cert", "repeated certificate",
+      "same certificate number")),
+    ("certificate_issue_lag_days",
+     ("certificate delay", "certificate issue time", "issue lag", "how fast certificate",
+      "how fast", "certificate issu", "issued", "certificate turnaround", "certificate time")),
+    ("certificate_pending_rate",
+     ("certificate pending", "pending certificate", "certificate backlog", "cert pending")),
+    # --- fees (efficiency + default before the generic "collected"/"pending") ---
+    ("collection_efficiency",
+     ("collection efficiency", "fee realization", "realisation", "realization",
+      "percent collected", "percentage collected", "% collected")),
+    ("default_rate",
+     ("default rate", "defaulter", "fee default", "unpaid balance")),
+    # --- retention / churn ---
+    ("repeat_enrollment_rate",
+     ("repeat", "re-enrol", "reenrol", "re enrol", "returning student", "retention")),
+    ("not_coming_rate",
+     ("not coming", "stopped coming", "stopped attending", "stopped showing")),
+    ("enquiry_backlog_rate",
+     ("backlog", "stale lead", "unconverted", "not converted", "stuck lead", "uncontacted")),
+    ("lead_to_admission_days",
+     ("time to admission", "days to admission", "lead to admission time", "how long to admit")),
+    # --- admissions funnel ---
     ("admission_conversion_rate", ("conversion", "convert", "conversion rate")),
     ("counselling_to_admission_rate", ("counselling to admission", "counsel")),
     ("admissions_confirmed", ("admission", "admitted", "enrol", "enroll")),
+    # --- courses ---
     ("dropout_rate", ("dropout", "drop out", "drop-out", "churn")),
-    ("completion_rate", ("completion", "completed", "finish")),
-    ("pending_fee", ("pending fee", "overdue", "unpaid", "outstanding")),
+    ("completion_rate", ("completion", "completed", "finish", "graduat")),
+    # --- fees (generic, after the specific fee metrics above) ---
+    ("pending_fee", ("pending fee", "overdue", "outstanding", "due fee")),
     ("gross_fee_collected", ("fee collected", "revenue", "collection", "collected")),
+    ("average_fee_per_student", ("average fee", "avg fee", "fee per student")),
+    # --- leads (generic, last) ---
     ("qualified_leads", ("qualified lead", "qualified")),
     ("total_leads", ("lead", "enquir", "inquir", "interest")),
 ]
 
 # Keyword -> dimension, to set the breakdown the question asks for (moved to
-# dimensions[0]).
+# dimensions[0]). Dimension keys are canonical ROLE names so the Analyst resolves
+# them to real columns. course_category before course so "course category" is not
+# swallowed by the broader "course".
 DIMENSION_KEYWORDS: List[tuple] = [
-    ("branch", ("branch", "vesu", "pal", "citylight", "location", "centre", "center")),
+    ("branch", ("branch", "vesu", "pal", "citylight", "adajan", "location", "centre", "center", "office")),
+    ("faculty", ("faculty", "trainer", "tutor", "teacher", "counsellor", "counselor", "staff")),
+    ("course_category", ("course category", "category")),
     ("course", ("course", "program", "class", "subject")),
-    ("counsellor", ("counsellor", "counselor", "staff", "faculty")),
-    ("lead_source", ("source", "channel", "google", "social", "referral", "campaign")),
+    ("payment_mode", ("payment mode", "mode of payment", "cash", "upi", "emi")),
+    ("source", ("source", "channel", "google", "social", "referral", "campaign", "from where", "marketing")),
     ("city", ("city", "area", "region")),
 ]
 
@@ -204,11 +241,15 @@ MINIMUM_COMMON_FIELDS = [
 ]
 
 MODULE_KEYWORDS = {
-    "admissions": ["admission", "lead", "application", "walk", "campaign"],
+    "admissions": ["admission", "lead", "enquir", "inquir", "application", "walk",
+                   "campaign", "conversion", "backlog"],
     "counselling": ["counsell", "follow", "demo", "response", "lost lead"],
-    "fee_management": ["fee", "payment", "receipt", "pending", "overdue", "refund", "discount"],
-    "courses": ["course", "trainer", "batch", "dropout", "completion", "active student"],
-    "certificates": ["certificate", "issued", "pending certificate"],
+    "fee_management": ["fee", "payment", "receipt", "pending", "overdue", "refund",
+                       "discount", "collection", "default", "efficiency", "realiz",
+                       "revenue"],
+    "courses": ["course", "trainer", "batch", "dropout", "completion", "active student",
+                "not coming", "repeat", "retention", "churn"],
+    "certificates": ["certificate", "issued", "pending certificate", "duplicat"],
     "student_reviews": ["review", "rating", "nps", "satisfaction", "negative"],
 }
 

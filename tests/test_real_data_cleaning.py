@@ -824,6 +824,42 @@ def test_ingestion_snapshot_and_fetch() -> None:
             assert fh.read() == b"PK\x03\x04stub"
 
 
+def test_problem_definition_metric_routing() -> None:
+    # Free-text questions must route to the Analyst-computable metric (metrics[0])
+    # AND the requested dimension (dimensions[0]) — the vocabulary sync + keyword
+    # expansion (A + B). A wrong route means the Analyst computes the wrong thing.
+    from agents.analyst_agent import METRIC_SPECS
+    from agents.problem_definition_agent import ProblemDefinitionAgent
+
+    agent = ProblemDefinitionAgent()
+    cases = [
+        ("What is my fee default rate by branch?", "default_rate", "branch"),
+        ("How is collection efficiency this year?", "collection_efficiency", None),
+        ("How fast are certificates issued?", "certificate_issue_lag_days", None),
+        ("What share of students are not coming?", "not_coming_rate", None),
+        ("How many repeat students by course?", "repeat_enrollment_rate", "course"),
+        ("How big is the enquiry backlog?", "enquiry_backlog_rate", None),
+        ("Are any certificate numbers duplicated?", "duplicate_certificate_rate", None),
+        ("How is conversion by branch?", "admission_conversion_rate", "branch"),
+        ("Which faculty has best completion?", "completion_rate", "faculty"),
+        ("pending fee by payment mode?", "pending_fee", "payment_mode"),
+    ]
+    for question, want_metric, want_dim in cases:
+        bq = agent.run(question)["business_questions"][0]
+        assert bq["metrics"][0] == want_metric, f"{question!r} -> {bq['metrics'][0]}"
+        if want_dim is not None:
+            assert bq["dimensions"][0] == want_dim, f"{question!r} dim -> {bq['dimensions'][0]}"
+
+    # Every metric the brief can name must be one the Analyst can compute — no
+    # dangling promises that get skipped downstream.
+    from agents.problem_definition_agent import MODULE_DEFINITIONS
+    for mod, spec in MODULE_DEFINITIONS.items():
+        if mod == "student_reviews":
+            continue  # review metrics have no Analyst spec yet (honest skip)
+        for m in spec["metrics"]:
+            assert m in METRIC_SPECS, f"{mod}: {m} not computable by Analyst"
+
+
 def main() -> int:
     failures = 0
     for name, fn in sorted(globals().items()):
