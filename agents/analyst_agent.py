@@ -61,6 +61,13 @@ METRIC_SPECS: Dict[str, JsonDict] = {
     # courses
     "dropout_rate": {"kind": "rate", "flag": "is_cancelled"},
     "completion_rate": {"kind": "rate", "flag": "is_completed"},
+    "not_coming_rate": {"kind": "rate", "flag": "is_not_coming"},
+    # repeat students (person-level; is_repeat_enrollment is set on the
+    # person_id grain by the Data Engineer, so this is a per-row rate).
+    "repeat_enrollment_rate": {"kind": "rate", "flag": "is_repeat_enrollment"},
+    # certificates
+    "certificate_pending_rate": {"kind": "rate", "flag": "is_certificate_pending"},
+    "certificate_issue_lag_days": {"kind": "mean", "role": "certificate_delay_days"},
     # generic time-to-event
     "lead_to_admission_days": {"kind": "mean", "role": "lead_to_admission_days"},
 }
@@ -78,6 +85,10 @@ METRIC_FALLBACK = {
     "admission_conversion_rate": "total_leads",
     "counselling_to_admission_rate": "admissions_confirmed",
     "dropout_rate": "completion_rate",
+    "not_coming_rate": "completion_rate",
+    "completion_rate": "not_coming_rate",
+    "repeat_enrollment_rate": "admissions_confirmed",
+    "certificate_pending_rate": "certificate_issue_lag_days",
     "pending_fee": "gross_fee_collected",
     "overdue_fee": "pending_fee",
 }

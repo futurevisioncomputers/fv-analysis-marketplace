@@ -50,7 +50,8 @@ REGISTRY_VERSION = 1
 
 # Metrics where a LOWER value is the good direction (affects breach/trend framing).
 LOWER_IS_BETTER = ("dropout_rate", "pending_fee", "overdue_fee",
-                   "certificate_delay_days", "refund_rate")
+                   "certificate_delay_days", "certificate_issue_lag_days",
+                   "certificate_pending_rate", "not_coming_rate", "refund_rate")
 
 # metric/dimension -> business area (mirrors insights_agent.BUSINESS_AREA).
 BUSINESS_AREA = {
@@ -61,11 +62,16 @@ BUSINESS_AREA = {
     "dropout_rate": "Courses",
     "completion_rate": "Courses",
     "course_completion_rate": "Courses",
+    "not_coming_rate": "Courses",
+    "repeat_enrollment_rate": "Revenue",
     "gross_fee_collected": "Revenue",
+    "collection_efficiency": "Fees",
     "pending_fee": "Fees",
     "overdue_fee": "Fees",
     "average_fee_per_student": "Revenue",
     "certificate_delay_days": "Certificates",
+    "certificate_issue_lag_days": "Certificates",
+    "certificate_pending_rate": "Certificates",
     "review_rating": "Reviews",
     "branch": "Branch Performance",
     "source": "Marketing",
@@ -83,6 +89,10 @@ BUSINESS_RULES: Dict[str, List[tuple]] = {
     "review_rating": [("<", 3.5, "critical"), ("<", 4.0, "warning")],
     # Course dropout (lower is better, so a HIGH value is the breach).
     "dropout_rate": [(">", 0.30, "critical"), (">", 0.20, "warning")],
+    # Not-coming / churn share of the cohort (lower is better).
+    "not_coming_rate": [(">", 0.30, "critical"), (">", 0.20, "warning")],
+    # Certificates joined-but-not-issued. High backlog = SLA breach.
+    "certificate_pending_rate": [(">", 0.50, "critical"), (">", 0.30, "warning")],
 }
 
 # Statistical anomaly detection: for metrics WITHOUT hard KPI targets,
@@ -92,6 +102,8 @@ STATISTICAL_ANOMALY_METRICS = [
     "admissions_confirmed",
     "gross_fee_collected",
     "course_completion_rate",
+    "repeat_enrollment_rate",
+    "not_coming_rate",
 ]
 
 # Metrics named in the spec that the institute data does not carry. Registered

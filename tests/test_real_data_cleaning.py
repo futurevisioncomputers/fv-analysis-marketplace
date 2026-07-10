@@ -224,6 +224,27 @@ def test_completion_status_from_sheet_name() -> None:
     assert "completion_status" not in df.columns
 
 
+def test_completion_flags_from_sheet_name() -> None:
+    # completion_status also emits boolean churn labels the Analyst reads:
+    # is_completed backs completion_rate, is_not_coming backs not_coming_rate.
+    agent = DataEngineerAgent(output_dir="output")
+    cases = {
+        "Student_Time_Table2023 - Course_Completed": (True, False),
+        "Student_Time_Table2023 - Not_Coming": (False, True),
+        "Student_Time_Table2023 - Main_data": (False, False),
+    }
+    for source_name, (want_done, want_gone) in cases.items():
+        df = pd.DataFrame({"Name": ["A", "B"]})
+        agent._derive_completion_status(df, source_name, [])
+        assert list(df["is_completed"]) == [want_done] * 2, source_name
+        assert list(df["is_not_coming"]) == [want_gone] * 2, source_name
+    # unlabeled source: no flags invented
+    df = pd.DataFrame({"Name": ["A"]})
+    agent._derive_completion_status(df, "fees-recpit", [])
+    assert "is_completed" not in df.columns
+    assert "is_not_coming" not in df.columns
+
+
 def test_status_reason_role_detected() -> None:
     # Not_Coming sheet: "Status & reason" must NOT be eaten by generic `status`.
     agent = DataEngineerAgent(output_dir="output")
@@ -355,6 +376,57 @@ def test_payment_reconciliation_table() -> None:
     assert summary["channel_counts"].get("emi") == 1
 
 
+def test_default_aging_and_collection_efficiency() -> None:
+    # Aging buckets debtors by days since last payment (as-of = ledger's own
+    # latest receipt); collection_efficiency = Σ collected / Σ billed.
+    import tempfile
+
+    agent = DataEngineerAgent(output_dir=tempfile.mkdtemp())
+    ledger = pd.DataFrame({
+        "student-id": ["600", "601", "602"],
+        "Receipt-Id": ["R1", "R2", "R3"],
+        "Date of Receipt": pd.to_datetime([
+            "2025-01-01",  # stale -> 90+ days behind as-of
+            "2025-06-01",  # recent -> 0-30
+            "2025-06-01",
+        ]),
+        "Amount": [7000.0, 4000.0, 8000.0],
+    })
+    ledger_roles = {
+        "student_id": "student-id", "receipt_id": "Receipt-Id",
+        "receipt_date": "Date of Receipt", "amount": "Amount",
+    }
+    rollup = pd.DataFrame({
+        "student-id": ["600", "601", "602"],
+        "Total Fees": [10000.0, 5000.0, 8000.0],
+        "Amt Pending": [3000.0, 1000.0, 0.0],  # 602 fully paid -> not a debtor
+    })
+    rollup_roles = {
+        "student_id": "student-id", "amount": "Total Fees",
+        "pending": "Amt Pending",
+    }
+    packages = [
+        {"source_name": "fees-data", "source_domain": "finance",
+         "canonical_columns": rollup_roles},
+        {"source_name": "fees-recpit", "source_domain": "finance",
+         "canonical_columns": ledger_roles},
+    ]
+    frames = {"fees-data": rollup, "fees-recpit": ledger}
+
+    summary = agent._build_payment_reconciliation(packages, frames)
+    recon = pd.read_parquet(summary["table_path"]).set_index("student_id")
+
+    assert recon.loc["600", "default_aging"] == "90+"
+    assert recon.loc["601", "default_aging"] == "0-30"
+    assert pd.isna(recon.loc["602", "default_aging"])  # not a debtor
+
+    # collected = 7000+4000+8000 = 19000; billed = 23000
+    assert summary["collection_efficiency"] == round(19000 / 23000, 4)
+    assert summary["total_billed"] == 23000.0
+    assert summary["default_aging_counts"] == {"90+": 1, "0-30": 1}
+    assert summary["overdue_90plus_amount"] == 3000.0
+
+
 def test_no_ledger_no_reconciliation() -> None:
     # Honesty gate: no finance ledger among sources -> None, nothing invented.
     agent = DataEngineerAgent(output_dir="output")
@@ -401,6 +473,40 @@ def test_person_id_conditional() -> None:
     agent._derive_person_id(df, {"name": "Name"}, [])
     assert df["person_id"].notna().tolist() == [True, True, False]
     assert "is_repeat_enrollment" not in df.columns
+
+
+def test_analyst_new_metrics() -> None:
+    # The step-4 metrics must compute off the flags/columns the Data Engineer
+    # now emits, not fall back to a record count.
+    from agents.analyst_agent import AnalystAgent
+
+    analyst = AnalystAgent()
+    df = pd.DataFrame({
+        "is_completed": [True, True, False, False, True],
+        "is_not_coming": [False, False, True, False, False],
+        "is_repeat_enrollment": [True, False, False, False, True],
+        "is_certificate_pending": [False, True, True, False, True],
+        "certificate_delay_days": [10.0, 45.0, None, 20.0, None],
+    })
+    package = {"canonical_columns": {}}
+
+    for metric, want in [
+        ("completion_rate", 0.6),
+        ("not_coming_rate", 0.2),
+        ("repeat_enrollment_rate", 0.4),
+        ("certificate_pending_rate", 0.6),
+    ]:
+        res = analyst.run({"metric": metric}, package, df=df)
+        head = res["headline_number"]
+        assert head["metric"] == metric, f"{metric} fell back"
+        assert round(head["value"], 4) == want, f"{metric}={head['value']}"
+
+    # mean metric on the delay column (only the 3 issued rows count)
+    res = analyst.run({"metric": "certificate_issue_lag_days"}, package, df=df)
+    head = res["headline_number"]
+    assert head["metric"] == "certificate_issue_lag_days"
+    assert round(head["value"], 2) == 25.0  # (10+45+20)/3
+    assert head["n"] == 3
 
 
 def main() -> int:

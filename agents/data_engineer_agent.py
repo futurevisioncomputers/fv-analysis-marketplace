@@ -299,6 +299,13 @@ REFUND_ENTRY_RE = re.compile(r"refund", re.IGNORECASE)
 # Rupee tolerance when checking total = paid + pending (rounding in sheets).
 RECON_TOLERANCE = 1.0
 
+# Default-aging buckets (days since a debtor's last payment). An enrollment with
+# pending > 0 falls into the first bucket whose upper bound it is under; >90 is
+# the tail. Reference "as of" date is the ledger's own latest receipt, not wall
+# clock, because the export is historical.
+AGING_BUCKETS = ((30, "0-30"), (60, "31-60"), (90, "61-90"))
+AGING_OVERDUE_BUCKET = "90+"
+
 # person_id key normalization: names keep letters/digits/spaces only; phones
 # keep the last 10 digits (drops +91 / spaces / hyphens / float ".0" artifacts).
 _PERSON_NAME_NORM_RE = re.compile(r"[^a-z0-9 ]+")
@@ -662,6 +669,12 @@ class DataEngineerAgent:
                     f"Derived completion_status='{label}' from source sheet "
                     f"name '{source_name}'"
                 )
+                # Boolean churn labels the Analyst/Monitoring read directly.
+                # `completion_rate` (Analyst METRIC_SPECS) needs is_completed;
+                # not_coming_rate needs is_not_coming. Both are added only on the
+                # sheet whose name resolved a label, so no row is guessed.
+                df["is_completed"] = label == "completed"
+                df["is_not_coming"] = label == "not_coming"
                 return
 
     def _prefer_cleaned_columns(self, df: pd.DataFrame, issues: List[str]) -> pd.DataFrame:
@@ -1976,6 +1989,11 @@ class DataEngineerAgent:
                 )
                 recon["recon_flag"] = recon["recon_gap"].abs() > RECON_TOLERANCE
 
+        # Default aging: bucket debtors (pending > 0) by days since last payment.
+        # Only when both a pending balance and a last-payment date are available.
+        if {"pending", "last_payment_date"} <= set(recon.columns):
+            self._derive_default_aging(recon)
+
         recon = recon.reset_index().rename(columns={"_sid": "student_id"})
         path = self._write_parquet(recon, "payment_reconciliation.csv")
 
@@ -1998,7 +2016,48 @@ class DataEngineerAgent:
             summary["negative_pending_count"] = int(
                 recon["negative_pending_flag"].fillna(False).sum()
             )
+        # Collection efficiency = rupees actually collected / rupees billed,
+        # money-weighted across enrollments (not an average of per-student ratios).
+        # Needs a rollup with total_fees; absent it, there is no billed denominator.
+        if "total_fees" in recon.columns:
+            billed = float(recon["total_fees"].sum(skipna=True))
+            if billed > 0:
+                collected = float(recon["net_paid"].fillna(0).clip(lower=0).sum())
+                summary["collection_efficiency"] = round(collected / billed, 4)
+                summary["total_billed"] = billed
+        if "default_aging" in recon.columns:
+            summary["default_aging_counts"] = (
+                recon["default_aging"].value_counts(dropna=True).to_dict()
+            )
+            overdue = recon.loc[
+                recon["default_aging"] == AGING_OVERDUE_BUCKET, "pending"
+            ]
+            summary["overdue_90plus_amount"] = float(overdue.sum(skipna=True))
         return summary
+
+    def _derive_default_aging(self, recon: pd.DataFrame) -> None:
+        """Tag each debtor (pending > 0) with a days-since-last-payment bucket.
+
+        Reference date is the ledger's own latest payment (historical export, so
+        wall-clock 'today' would overstate every age). Non-debtors (pending <= 0
+        or no payment date) get no bucket — the column stays null for them.
+        """
+        pending = pd.to_numeric(recon["pending"], errors="coerce")
+        last = recon["last_payment_date"]
+        if not pd.api.types.is_datetime64_any_dtype(last) or last.notna().sum() == 0:
+            return
+        as_of = last.max()
+        days = (as_of - last).dt.days
+        debtor = (pending > 0) & days.notna()
+
+        bucket = pd.Series(pd.NA, index=recon.index, dtype="object")
+        prev = -1
+        for upper, label in AGING_BUCKETS:
+            in_band = debtor & (days > prev) & (days <= upper)
+            bucket[in_band] = label
+            prev = upper
+        bucket[debtor & (days > prev)] = AGING_OVERDUE_BUCKET
+        recon["default_aging"] = bucket
 
     def _merged_roles(self, packages: Sequence[JsonDict], merged: pd.DataFrame) -> Dict[str, str]:
         roles: Dict[str, str] = {}
