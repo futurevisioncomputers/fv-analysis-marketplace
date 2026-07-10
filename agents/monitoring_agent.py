@@ -93,6 +93,8 @@ BUSINESS_RULES: Dict[str, List[tuple]] = {
     "not_coming_rate": [(">", 0.30, "critical"), (">", 0.20, "warning")],
     # Certificates joined-but-not-issued. High backlog = SLA breach.
     "certificate_pending_rate": [(">", 0.50, "critical"), (">", 0.30, "warning")],
+    # Money-weighted collection efficiency (higher is better -> LOW value breaches).
+    "collection_efficiency": [("<", 0.50, "critical"), ("<", 0.70, "warning")],
 }
 
 # Statistical anomaly detection: for metrics WITHOUT hard KPI targets,

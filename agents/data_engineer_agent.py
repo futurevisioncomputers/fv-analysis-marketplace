@@ -546,6 +546,7 @@ class DataEngineerAgent:
 
         df = self._parse_dates(df, roles, known_issues, date_format)
         df = self._normalize_money(df, roles, known_issues)
+        self._derive_amount_collected(df, roles, known_issues)
         df = self._normalize_discovered_numeric(df, roles, known_issues)
         df = self._normalize_categoricals(df, roles)
         df = self._apply_canonical_maps(df, roles, known_issues)
@@ -1012,6 +1013,33 @@ class DataEngineerAgent:
             if bad > 0:
                 issues.append(f"{role} '{col}': {bad} non-numeric value(s) set to NaN")
         return df
+
+    def _derive_amount_collected(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Per-enrollment rupees collected = billed total - pending.
+
+        On a rollup frame (total_fees + pending) the collected amount is not a
+        stored column but drives collection_efficiency by branch/course. Only
+        added when both an amount (total) and a pending role are numeric, so
+        ledger/enquiry frames without a billed total get nothing. A pre-existing
+        explicit `paid` role is left as the truth and no derived column is made.
+        """
+        if roles.get("paid"):
+            return  # explicit collected figure already present
+        amount_col = roles.get("amount")
+        pending_col = roles.get("pending")
+        if not amount_col or not pending_col:
+            return
+        if not (pd.api.types.is_numeric_dtype(df[amount_col])
+                and pd.api.types.is_numeric_dtype(df[pending_col])):
+            return
+        collected = (df[amount_col] - df[pending_col].fillna(0)).clip(lower=0)
+        df["amount_collected"] = collected
+        issues.append(
+            f"Derived amount_collected = '{amount_col}' - '{pending_col}' "
+            f"(collection_efficiency numerator)"
+        )
 
     def _normalize_discovered_numeric(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]

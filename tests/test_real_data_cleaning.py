@@ -543,6 +543,56 @@ def test_free_text_pii_scrub() -> None:
     assert list(df["Total Fees"]) == [12000.0, 5000.0, 8000.0]
 
 
+def test_amount_collected_derived() -> None:
+    # collected = billed total - pending (clipped >= 0). Overpayment (negative
+    # pending) means collected exceeds billed. Skipped when an explicit paid role
+    # already carries the figure.
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Total Fees": [10000.0, 5000.0],
+        "Amt Pending": [2000.0, -500.0],  # row 2 overpaid
+    })
+    agent._derive_amount_collected(
+        df, {"amount": "Total Fees", "pending": "Amt Pending"}, []
+    )
+    assert list(df["amount_collected"]) == [8000.0, 5500.0]
+
+    df2 = pd.DataFrame({
+        "Total Fees": [10000.0], "Amt Pending": [2000.0], "Paid": [8000.0],
+    })
+    agent._derive_amount_collected(
+        df2, {"amount": "Total Fees", "pending": "Amt Pending", "paid": "Paid"}, []
+    )
+    assert "amount_collected" not in df2.columns  # explicit paid wins
+
+
+def test_analyst_collection_efficiency() -> None:
+    # Money-weighted ratio of totals, overall + by branch.
+    from agents.analyst_agent import AnalystAgent
+
+    analyst = AnalystAgent()
+    df = pd.DataFrame({
+        "amount_collected": [8000.0, 4000.0, 9000.0, 3000.0],
+        "Total": [10000.0, 5000.0, 10000.0, 10000.0],
+        "Branch": ["Pal", "Pal", "Adajan", "Adajan"],
+    })
+    package = {"canonical_columns": {
+        "amount_collected": "amount_collected", "amount": "Total", "branch": "Branch",
+    }}
+    res = analyst.run(
+        {"metric": "collection_efficiency", "dimensions": ["branch"]},
+        package, df=df,
+    )
+    head = res["headline_number"]
+    assert head["metric"] == "collection_efficiency"
+    assert round(head["value"], 4) == round(24000 / 35000, 4)  # Σcol/Σtotal
+    assert head["n"] == 4
+    segs = {b["segment"]: b["value"] for b in res["breakdowns"]}
+    assert segs["branch=Pal"] == 0.8          # 12000/15000
+    assert segs["branch=Adajan"] == 0.6       # 12000/20000
+    assert "ratio of totals" in res["methodology"]
+
+
 def test_report_phone_leak_detection() -> None:
     # Report defence-in-depth must catch bare AND formatted phones, but never
     # trip on Chart.js numeric literals (epoch ms, large values have no separators).
