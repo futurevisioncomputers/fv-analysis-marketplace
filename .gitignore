@@ -3,6 +3,8 @@ __pycache__/
 .env
 *.parquet
 *.xlsx
+# Ingestion snapshots hold RAW, un-masked institute data (PII) — never commit.
+data/ingest/
 report.html
 fv_report.html
 fv_report2.html

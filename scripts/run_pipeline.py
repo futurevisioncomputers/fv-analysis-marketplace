@@ -103,7 +103,35 @@ def _build_data_sources(args) -> list:
             "path_or_query": path,
             "domain": _infer_domain(name + " " + os.path.basename(path), []),
         })
+    for item in args.sheet_url or []:
+        sources.append(_ingest_sheet_url(item))
     return sources
+
+
+def _ingest_sheet_url(item: str) -> dict:
+    """Fetch a published Google Sheet URL to a dated CSV snapshot -> csv source.
+
+    Accepts `URL` or `name=URL`. The snapshot pins exactly the bytes analyzed.
+    """
+    import pandas as pd
+
+    from agents.ingestion import ingest_gsheet
+
+    if "=" in item and not item.split("=", 1)[0].lower().startswith("http"):
+        name, url = item.split("=", 1)
+    else:
+        name, url = "", item
+    url = url.strip()
+    name = _safe_source_name(name) if name else "google_sheet"
+    snapshot = ingest_gsheet(url, name)
+    columns = list(pd.read_csv(snapshot, nrows=1).columns)
+    return {
+        "name": name,
+        "type": "csv",
+        "path": snapshot,
+        "path_or_query": snapshot,
+        "domain": _infer_domain(name, columns),
+    }
 
 
 def _safe_source_name(name: str) -> str:
@@ -136,6 +164,9 @@ def main(argv=None) -> int:
     ap.add_argument("--excel", help="Excel workbook path; each non-empty sheet is a source.")
     ap.add_argument("--source", action="append", default=[],
                     help="Additional named CSV source as name=path.csv; repeatable.")
+    ap.add_argument("--sheet-url", action="append", default=[], dest="sheet_url",
+                    help="Published Google Sheet URL (or name=URL); snapshotted to "
+                         "data/ingest as CSV. Repeatable.")
     ap.add_argument("--question", default="How is admission conversion performing by branch?",
                     help="Business question (free text or a /goal JSON string).")
     ap.add_argument("--out", default="report.html", help="Output HTML path.")
@@ -154,13 +185,14 @@ def main(argv=None) -> int:
             return 2
         return _render_from_json(args.from_json, args.out)
 
-    multi_requested = bool(args.excel or args.source)
+    multi_requested = bool(args.excel or args.source or args.sheet_url)
     if args.csv and multi_requested:
-        print("error: use either --csv or --excel/--source, not both", file=sys.stderr)
+        print("error: use either --csv or --excel/--source/--sheet-url, not both",
+              file=sys.stderr)
         return 2
     if not args.csv and not multi_requested:
-        print("error: --csv, --excel, or --source is required (or use --from-json)",
-              file=sys.stderr)
+        print("error: --csv, --excel, --source, or --sheet-url is required "
+              "(or use --from-json)", file=sys.stderr)
         return 2
     if args.csv and not os.path.exists(args.csv):
         print(f"error: CSV not found: {args.csv}", file=sys.stderr)

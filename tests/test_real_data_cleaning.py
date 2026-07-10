@@ -761,6 +761,62 @@ def test_prediction_trains_and_beats_baseline() -> None:
     assert top["churn_log_likelihood_ratio"] > 0
 
 
+def test_gsheet_url_normalization() -> None:
+    from agents.ingestion import normalize_gsheet_url
+
+    # /edit URL with a gid -> single-tab CSV export.
+    edit = "https://docs.google.com/spreadsheets/d/1AbC-dEf_123/edit#gid=456"
+    got = normalize_gsheet_url(edit)
+    assert got == (
+        "https://docs.google.com/spreadsheets/d/1AbC-dEf_123/export?format=csv&gid=456"
+    )
+    # Already-published CSV URL is left alone.
+    pub = "https://docs.google.com/spreadsheets/d/e/2PACX/pub?output=csv"
+    assert normalize_gsheet_url(pub) == pub
+    # Non-Google http(s) endpoint passes through (raw CSV endpoint).
+    raw = "https://example.com/data/report.csv"
+    assert normalize_gsheet_url(raw) == raw
+    # Non-web scheme is rejected (blocks file:// and friends).
+    try:
+        normalize_gsheet_url("file:///etc/passwd")
+        assert False, "file:// should be rejected"
+    except ValueError:
+        pass
+
+
+def test_ingestion_snapshot_and_fetch() -> None:
+    import datetime
+    import os
+    import pathlib
+    import tempfile
+
+    from agents.ingestion import fetch_csv, snapshot_local, snapshot_path
+
+    now = datetime.datetime(2026, 7, 10, 9, 30, 0)
+    with tempfile.TemporaryDirectory() as tmp:
+        snap_dir = os.path.join(tmp, "ingest")
+        # Deterministic dated snapshot path.
+        p = snapshot_path("Main Data!", snap_dir, ".csv", now=now)
+        assert os.path.basename(p) == "20260710_093000_Main_Data.csv"
+
+        # fetch_csv works against a file:// URL (no network in tests).
+        src = os.path.join(tmp, "src.csv")
+        with open(src, "w", encoding="utf-8") as fh:
+            fh.write("a,b\n1,2\n")
+        url = pathlib.Path(src).as_uri()
+        out = fetch_csv(url, p)
+        assert pd.read_csv(out).iloc[0].tolist() == [1, 2]
+
+        # snapshot_local keeps the extension and copies the bytes.
+        xlsx_src = os.path.join(tmp, "book.xlsx")
+        with open(xlsx_src, "wb") as fh:
+            fh.write(b"PK\x03\x04stub")
+        copied = snapshot_local(xlsx_src, snap_dir, now=now)
+        assert copied.endswith(".xlsx")
+        with open(copied, "rb") as fh:
+            assert fh.read() == b"PK\x03\x04stub"
+
+
 def main() -> int:
     failures = 0
     for name, fn in sorted(globals().items()):
