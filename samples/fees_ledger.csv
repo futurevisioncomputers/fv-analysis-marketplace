@@ -1,0 +1,7 @@
+Student-ID,Receipt ID,Date of Receipt,Paid Amt,Mode of Payment,Description
+101,R1,2025-01-10,6000,cash,cash at desk
+101,R2,2025-02-10,6000,upi,razorpay upi
+102,R3,2025-02-05,4000,upi,paid to ICICI
+103,R4,2025-03-12,5000,cash,cash at desk
+103,R6,2025-04-01,1000,upi,1000 refunded
+105,R5,2025-06-01,8000,bank transfer,razorpay emi
