@@ -55,8 +55,8 @@ This document (A) lists what the real data actually looks like, (B) replans each
   or never recorded — indistinguishable today.
 
 ### A7. PII edge cases current masking misses
-- `+1(414) 526-5885`, `+818035074667`, `+13068074262`, 11–13 digit strings,
-  malformed emails (`tannaa@123@gmail.com`, `Mehtakrishang230908` no domain).
+- `+1(555) 010-0142`, `+818000074667`, `+15550100142`, 11–13 digit strings,
+  malformed emails (`tannaa@123@example.com`, `Wagleaarav230908` no domain).
   `_MOBILE_RE = \b\d{10}\b` misses the international ones.
 
 ### A8. Structural junk

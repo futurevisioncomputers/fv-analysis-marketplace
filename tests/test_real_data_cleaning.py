@@ -484,7 +484,7 @@ def test_person_id_repeat_enrollment() -> None:
     df = pd.DataFrame({
         "student-id": [3, 244, 609, 74],
         "Name": ["Khiren Jain", "khiren  jain ", "KHIREN JAIN", "Rupesh Yadav"],
-        "Mobile": ["9998877665", "+91 99988 77665", "9998877665.0", "9876543210"],
+        "Mobile": ["9998877665", "+91 99988 77665", "9998877665.0", "7770043210"],
     })
     issues: list = []
     agent._derive_person_id(
@@ -554,13 +554,13 @@ def test_free_text_pii_scrub() -> None:
     agent = DataEngineerAgent(output_dir="output")
     df = pd.DataFrame({
         "Status & reason": [
-            "gone to egypt, call 9825012345",         # bare 10-digit phone
-            "parent contact +91 98765 43210",         # formatted international
+            "gone to egypt, call 8880012345",         # bare 10-digit phone
+            "parent contact +91 88800 12345",         # formatted international
             "shifted on 10/05/2025, pincode 395007",  # date + pincode: keep
         ],
         "Description": [
             "paid via cheque no 445566",              # 6-digit cheque: keep
-            "refund, mail a.b@icici.com",             # email redact
+            "refund, mail a.b@example.com",             # email redact
             "installment 12000 paid",                 # amount: keep
         ],
         "Total Fees": [12000.0, 5000.0, 8000.0],      # numeric col untouched
@@ -710,9 +710,9 @@ def test_report_phone_leak_detection() -> None:
     # trip on Chart.js numeric literals (epoch ms, large values have no separators).
     from agents.report_agent import _contains_mobile
 
-    assert _contains_mobile("<td>9825012345</td>")          # bare 10-digit
-    assert _contains_mobile("call +91 98765 43210 now")     # formatted intl
-    assert _contains_mobile("ph: 98765-43210")              # hyphenated
+    assert _contains_mobile("<td>8880012345</td>")          # bare 10-digit
+    assert _contains_mobile("call +91 88800 12345 now")     # formatted intl
+    assert _contains_mobile("ph: 88800-12345")              # hyphenated
     assert not _contains_mobile('{"data":[1704067200000, 1706745600000]}')
     assert not _contains_mobile("total 12000 pincode 395007 on 2025-01-10")
 
@@ -724,7 +724,7 @@ def test_report_phone_leak_detection() -> None:
     assert not _contains_mobile("value 1523456.7890 rupees")
     # And the guard still holds where it matters.
     assert _contains_mobile("(079) 2345-6789")
-    assert _contains_mobile("call 7990219667 now")
+    assert _contains_mobile("call 7770019667 now")
 
 
 def test_prediction_blocks_thin_labels() -> None:

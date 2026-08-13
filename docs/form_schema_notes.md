@@ -241,9 +241,9 @@ across rows.
 ## 6. Field-level damage
 
 **Phones** — 10-digit is the norm, but the sheets contain 9-digit (dropped
-character), 11-digit (fat finger), leading-zero (`08128054334`), `+91`, `+1`,
-`+81` international, two numbers in one cell (`7990219667, 8140962788` and
-`9106465869---9327115508`), and blanks. A `\b\d{10}\b` mask misses most of
+character), 11-digit (fat finger), leading-zero (`08880054334`), `+91`, `+1`,
+`+81` international, two numbers in one cell (`7770019667, 7770062788` and
+`9990065869---9990015508`), and blanks. A `\b\d{10}\b` mask misses most of
 these.
 
 **Dates** — two separate problems. Keep them apart:
@@ -269,8 +269,8 @@ In the generated samples, date **order is day-first in 100% of rows**; the
 value-damage classes above are retained, including ~1% separator drift.
 
 **Emails** — typo TLD (`.con`), missing dot (`gmail com`), stray comma
-(`gmail,.com`), no domain at all (`Mehtakrishang230908`), ALL CAPS, and
-mojibake from smart quotes (`itâ€™s_jaya@yahoo.in`).
+(`gmail,.com`), no domain at all (`Wagleaarav230908`), ALL CAPS, and
+mojibake from smart quotes (`itâ€™s_jaya@example.in`).
 
 **Receipt IDs** — not a key. Blank, zero-padded (`002`, `0000`), ranges
 (`741 & 742`, `276,277`), suffixed (`455-1`), free text (`no number`), and
