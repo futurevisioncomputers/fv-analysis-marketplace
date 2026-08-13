@@ -72,7 +72,15 @@ METRIC_SPECS: Dict[str, JsonDict] = {
     # courses
     "dropout_rate": {"kind": "rate", "flag": "is_cancelled"},
     "completion_rate": {"kind": "rate", "flag": "is_completed"},
+    # Two different questions, deliberately both kept.
+    # `not_coming_rate` is operational: who stopped attending, from tab
+    # membership alone. `churn_rate` is the institute's rule — the course
+    # window closed six months ago and they never came back — computed by
+    # `agents/lifecycle.py` against an explicit as-of date. A student on leave
+    # inside their window counts in the first and not the second, which is the
+    # whole point of the distinction.
     "not_coming_rate": {"kind": "rate", "flag": "is_not_coming"},
+    "churn_rate": {"kind": "rate", "flag": "is_churn", "unknown": "exclude"},
     # repeat students (person-level; is_repeat_enrollment is set on the
     # person_id grain by the Data Engineer, so this is a per-row rate).
     "repeat_enrollment_rate": {"kind": "rate", "flag": "is_repeat_enrollment"},
@@ -102,6 +110,9 @@ METRIC_FALLBACK = {
     "dropout_rate": "completion_rate",
     "not_coming_rate": "completion_rate",
     "completion_rate": "not_coming_rate",
+    # Falls back to the operational measure when no course duration is
+    # available to compute a course end from.
+    "churn_rate": "not_coming_rate",
     "repeat_enrollment_rate": "admissions_confirmed",
     "certificate_pending_rate": "certificate_issue_lag_days",
     "duplicate_certificate_rate": "certificate_pending_rate",
@@ -171,7 +182,8 @@ class AnalystAgent:
         series, kind, denom = self._metric_series(df, metric, spec, roles)
         if series is None:
             return self._blocked(
-                f"Metric {metric!r} cannot be computed: required column missing."
+                f"Metric {metric!r} cannot be computed: "
+                + self._why_missing(metric, spec, data_package)
             )
 
         headline = self._headline(metric, kind, series, denom)
@@ -291,6 +303,14 @@ class AnalystAgent:
             flag = spec.get("flag")
             if flag and flag in df.columns:
                 s = df[flag].astype("boolean").astype("float")
+                # For most flags a null is a genuine False — no cancellation
+                # marker means not cancelled. `is_churn` is different: null
+                # means *we could not tell*, and filling it with 0 counts every
+                # row with no course duration as retained, understating churn
+                # by however incomplete the source is. Those rows leave both
+                # sides of the rate instead (`_agg` drops NaN).
+                if spec.get("unknown") == "exclude":
+                    return s, "rate", None
                 return s.fillna(0.0), "rate", None
             return None, kind, None
 
@@ -749,6 +769,27 @@ class AnalystAgent:
         return "; ".join(parts) + "."
 
     # -------------------------------------------------------------- escalation
+
+    # Person-grain flags are withheld by the Data Engineer when the source has
+    # no way to tell two people apart, which is a different problem from the
+    # sheet simply not carrying the concept. Saying which one it is decides
+    # whether the operator should supply another sheet or stop asking.
+    _PERSON_GRAIN_FLAGS = ("is_repeat_enrollment",)
+
+    def _why_missing(self, metric: str, spec: Mapping[str, Any],
+                     data_package: Mapping[str, Any]) -> str:
+        """Explain a missing column in terms the operator can act on."""
+        flag = spec.get("flag")
+        if flag in self._PERSON_GRAIN_FLAGS:
+            basis = ((data_package.get("quality_report") or {})
+                     .get("person_id_basis") or [])
+            if list(basis) == ["name"]:
+                return (
+                    "this source has no phone, date-of-birth or email, so two "
+                    "people with the same name cannot be told apart. Person-"
+                    "level metrics need a source with contact details "
+                    "(student-data or the admission form).")
+        return "required column missing."
 
     def _blocked(self, reason: str) -> JsonDict:
         return {

@@ -86,13 +86,17 @@ MODULE_DEFINITIONS: Dict[str, JsonDict] = {
             "completion_rate",
             "dropout_rate",
             "not_coming_rate",
+            # The institute's own churn rule, distinct from not_coming_rate:
+            # stopping is not churn until the course window has been closed for
+            # six months. Needs a course duration, and falls back when absent.
+            "churn_rate",
             "repeat_enrollment_rate",
         ],
         "dimensions": ["course", "faculty", "branch", "course_category"],
         "datasets": ["students", "courses", "batches"],
         "questions": [
             "Which courses, faculty, or branches have the highest completion, dropout, or not-coming rates?",
-            "What share of students churn (not coming) versus complete, by course and faculty?",
+            "What share of students churn — course window closed six months and never came back — versus complete, by course and faculty?",
             "Which courses see the most repeat enrollment (returning students)?",
         ],
     },
@@ -152,6 +156,12 @@ METRIC_KEYWORDS: List[tuple] = [
     ("default_rate",
      ("default rate", "defaulter", "fee default", "unpaid balance")),
     # --- retention / churn ---
+    # "churn" used to route to dropout_rate, which is is_cancelled — a
+    # cancelled admission, a different event entirely. It now reaches the
+    # institute's actual rule: the course window closed six months ago and the
+    # student never came back.
+    ("churn_rate",
+     ("churn", "churned", "lost student", "never came back", "never returned")),
     ("repeat_enrollment_rate",
      ("repeat", "re-enrol", "reenrol", "re enrol", "returning student", "retention")),
     ("not_coming_rate",
@@ -165,7 +175,7 @@ METRIC_KEYWORDS: List[tuple] = [
     ("counselling_to_admission_rate", ("counselling to admission", "counsel")),
     ("admissions_confirmed", ("admission", "admitted", "enrol", "enroll")),
     # --- courses ---
-    ("dropout_rate", ("dropout", "drop out", "drop-out", "churn")),
+    ("dropout_rate", ("dropout", "drop out", "drop-out")),
     ("completion_rate", ("completion", "completed", "finish", "graduat")),
     # --- fees (generic, after the specific fee metrics above) ---
     ("pending_fee", ("pending fee", "overdue", "outstanding", "due fee")),

@@ -177,6 +177,16 @@ Two additional sheets studied (`Course_Completed`, `Not_Coming`):
   Not_Coming → `not_coming`, Main_data → `active`. This is the completion/churn
   ground truth C-item 3 asked for — it already exists, just encoded in sheet
   names. Pipeline now derives `completion_status` from the source sheet name.
+
+  > ⚠️ **SUPERSEDED — see `docs/form_schema_notes.md` §10.** Sheet membership
+  > alone is *not* the churn label. There is a fourth tab,
+  > `NOT TO ENTERTRAIN` (barred from resuming, unconditional churn), and
+  > `Not_Coming` is a *paused* state that only becomes churn once the student
+  > has been away **6 months or more** — the institute refuses a resume past
+  > that point. So `not_coming` is time-dependent: the same row flips from
+  > censored to churned with no edit to any sheet. Treating `Not_Coming` as
+  > unconditional churn both inflates the positive class and misses the aged
+  > group. Recompute against an explicit as-of date.
 - **`Status & reason` column** on Not_Coming holds churn reasons + module-level
   progress ("word completed, powerpoint started", "gone to egypt for one month").
   Mapped to a `status_reason` role; churn-reason categorization (out-of-town /

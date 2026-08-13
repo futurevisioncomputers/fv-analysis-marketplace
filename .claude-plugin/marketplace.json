@@ -8,7 +8,19 @@
     {
       "name": "fv-analysis",
       "source": "./",
-      "description": "Institute analytics pipeline + HTML report generator (8 agents, PII-safe, LLM-augmented narrative)."
+      "version": "2.0.0",
+      "description": "Turn an institute sheet into a decision-grade HTML report, one resumable stage at a time. Stage 1 says what the sheet can and cannot answer before any work is spent; every stage after it pauses for a decision. Includes significance testing, survival with censoring, and two-dimension crossing.",
+      "category": "data",
+      "keywords": [
+        "analytics",
+        "data-cleaning",
+        "reporting",
+        "education",
+        "kpi",
+        "statistics",
+        "churn",
+        "pii-masking"
+      ]
     }
   ]
 }

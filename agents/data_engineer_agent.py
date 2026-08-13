@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-from . import canonical_maps
+from . import canonical_maps, lifecycle
 
 
 JsonDict = Dict[str, Any]
@@ -99,52 +99,151 @@ ROLE_SPECS: Dict[str, Dict[str, List[str]]] = {
         "exclude": [],
     },
     "status": {"include": ["status", "stage"], "exclude": []},
-    "mode": {"include": ["mode"], "exclude": ["payment"]},
+    # Mode is written three different ways across the estate. The specific
+    # headers win here; a bare "Mode" stays generic and is resolved from its
+    # values by `_specialize_roles`, because the institute uses it for the
+    # online/offline delivery mode on student-data and for something else
+    # entirely on the enquiry sheets.
+    "enquiry_mode": {"include": ["mode of enquiry", "enquiry mode"], "exclude": []},
+    "admission_mode": {"include": ["mode of admission", "admission mode"],
+                       "exclude": []},
+    "mode": {"include": ["mode"], "exclude": ["payment", "enquiry", "admission"]},
     # --- contact / PII ---
     "email": {"include": ["email", "e-mail"], "exclude": []},
+    # Two guardian numbers exist on the admission form (father and mother) and
+    # only one role used to claim them, so the second was masked as an
+    # anonymous `discovered_pii_N` and could never be used as a fallback
+    # contact. Father / "guardian 1" / a bare "parent" is the first; mother /
+    # "guardian 2" / "secondary contact" is the second.
     "parent_mobile": {
         "include": [
             "mobile no (parent",
             "mobile no (father",
-            "mobile no (mother",
+            "guardian 1",
             "parent",
             "guardian",
-            "secondary contact",
         ],
+        "exclude": ["mother", "guardian 2"],
+    },
+    "parent_mobile_2": {
+        "include": ["mobile no (mother", "mother", "guardian 2",
+                    "secondary contact"],
         "exclude": [],
     },
     "student_mobile": {
         "include": ["mobile no (student", "mobile", "phone", "contact no", "whatsapp"],
         "exclude": [],
     },
+    # Residential area is a locality ("Adajan", "Vesu") — a usable dimension.
+    # The full address is PII. Claim the area first so it is not masked away.
+    "residential_area": {"include": ["residential area", "area"],
+                         "exclude": ["address"]},
     "address": {
         "include": ["address", "residential", "street", "addr"],
         "exclude": [],
     },
     "pincode": {"include": ["pincode", "pin code", "zip", "postal"], "exclude": []},
     "photo": {"include": ["photo", "image"], "exclude": []},
-    # --- name (exclude Google Contacts helper column + course/tutor names) ---
+    # --- name -------------------------------------------------------------
+    # `counsellor` MUST precede `name`. Enquiry Form Responses 2 has no student
+    # name column at all, so "Counsellor Name" won the `name` role and person
+    # identity was built from the counsellor: "4 repeat enrollments" meant one
+    # counsellor handling four enquiries. With the role split, that sheet has
+    # no name role and person-grain metrics are correctly withheld.
+    "counsellor": {"include": ["counsellor", "counselor"], "exclude": []},
     "name": {
         "include": ["student name", "name of student", "name"],
-        "exclude": ["google", "course", "tutor", "faculty", "branch", "category"],
+        "exclude": ["google", "course", "tutor", "faculty", "branch", "category",
+                    "counsellor", "counselor"],
     },
     # --- categoricals ---
+    # A preference stated on a form is not where the student ended up. Keeping
+    # them apart is what lets demand be compared against actual supply; merged,
+    # a branch report silently mixes the two.
+    "preferred_branch": {"include": ["preferred branch"], "exclude": []},
     "branch": {
-        "include": ["branch", "centre", "center", "preferred branch", "region", "office"],
-        "exclude": [],
+        "include": ["branch", "centre", "center", "region", "office"],
+        "exclude": ["preferred"],
     },
     "source": {
         "include": ["from where", "source", "channel", "referral", "utm", "how did"],
         "exclude": [],
     },
+    # Tutor and Faculty are the same person in different sheets' vocabulary, so
+    # they share one role; which word the sheet used is kept as `staff_role`.
     "faculty": {
-        "include": ["faculty", "tutor", "trainer", "counsellor", "assigned to", "agent"],
+        "include": ["faculty", "tutor", "trainer", "assigned to", "agent"],
         "exclude": [],
     },
+    "student_category": {"include": ["student category", "category"],
+                         "exclude": ["course"]},
     "education": {"include": ["education level", "education", "qualification"], "exclude": ["details"]},
     "occupation": {"include": ["presently what", "occupation", "currently doing"], "exclude": []},
-    "batch_time": {"include": ["batch timing", "batch time", "slot", "shift"], "exclude": []},
-    "preferred_days": {"include": ["preferred days", "days"], "exclude": ["remain"]},
+    "education_details": {"include": ["education details"], "exclude": []},
+    "preferred_batch_time": {"include": ["preferred batch time", "preferred batch"],
+                             "exclude": []},
+    "batch_time": {"include": ["batch timing", "batch time", "slot", "shift"],
+                   "exclude": ["preferred"]},
+    "preferred_days": {"include": ["preferred days"], "exclude": ["remain"]},
+    # A bare "Days" is the timetable's actual class days, not a preference.
+    "class_days": {"include": ["days"], "exclude": ["remain", "preferred", "duration"]},
+    "coupon_given": {"include": ["coupon"], "exclude": []},
+    "notes": {"include": ["any other notes", "notes", "more info"], "exclude": []},
+}
+
+# The institute's own vocabulary for each internal role. Internal keys stay as
+# they are — METRIC_SPECS and every derivation are keyed on them — but anything
+# an operator reads should use the name they gave it. Emitted on the data
+# package as `field_names` so reports and skills can render their words.
+CANONICAL_FIELD_NAMES: Dict[str, str] = {
+    "name": "student_name",
+    "student_id": "student_id",
+    "student_mobile": "student_phone",
+    "parent_mobile": "guardian_phone_1",
+    "parent_mobile_2": "guardian_phone_2",
+    "email": "student_email",
+    "address": "student_address",
+    "residential_area": "residential_area",
+    "pincode": "pincode",
+    "education": "education_level",
+    "education_details": "education_details",
+    "occupation": "current_occupation",
+    "course": "course",
+    "course_category": "course_category",
+    "course_duration": "course_duration_days",
+    "days_remaining": "days_remaining",
+    "preferred_branch": "preferred_branch",
+    "branch": "branch",
+    "counsellor": "counsellor_name",
+    "faculty": "faculty_name",
+    "preferred_days": "preferred_days",
+    "class_days": "class_days",
+    "preferred_batch_time": "preferred_batch_time",
+    "batch_time": "batch_timing",
+    "enquiry_date": "enquiry_date",
+    "record_timestamp": "record_timestamp",
+    "admission_date": "admission_date",
+    "joining_date": "joining_date",
+    "dob": "date_of_birth",
+    "issue_date": "certificate_issue_date",
+    "certificate_number": "certificate_number",
+    "receipt_id": "receipt_id",
+    "receipt_date": "receipt_date",
+    "amount": "total_fee",
+    "paid": "paid_amount",
+    "pending": "amount_pending",
+    "status": "fee_status",
+    "payment_mode": "payment_mode",
+    "source": "lead_source",
+    "enquiry_mode": "enquiry_mode",
+    "admission_mode": "admission_mode",
+    "mode": "learning_mode",
+    "notes": "notes",
+    "description": "description",
+    "status_reason": "churn_status_reason",
+    "student_category": "student_category",
+    "coupon_given": "coupon_given",
+    "photo": "student_photo",
 }
 
 # Roles whose raw values are PII and must be hashed before output.
@@ -229,6 +328,9 @@ DISCOVERY_ID_UNIQUE_FRAC = 0.95      # mostly-unique numeric -> identifier, skip
 
 # A value is "date-ish" only if it carries a separator or a month name; this
 # stops bare integers (years, counts, ids) from being mis-read as dates.
+# pandas' placeholder for a column with no header. Never a keyword match.
+_UNNAMED_HEADER_RE = re.compile(r"^unnamed:\s*\d+$")
+
 _DATEISH_RE = r"[/\-]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec"
 _EMAIL_VALUE_RE = r"[^@\s]+@[^@\s]+\.[^@\s]+"
 
@@ -272,15 +374,40 @@ PLACEHOLDER_NAME_RE = re.compile(r"^\s*z{3,}", re.IGNORECASE)
 
 # Lifecycle ground truth carried by the timetable workbook's SHEET, not any
 # column: Course_Completed -> completed, Not_Coming -> not_coming,
-# Main_data -> active. Matched against the source name (substring, lowered).
+# NOT TO ENTERTRAIN -> not_to_entertain, Main_data -> active. Matched against
+# the source name (substring, lowered).
+#
+# ORDER MATTERS: every tab name also contains "timetable" when exported as
+# `student_timetable__<tab>.csv`, so the specific tab needles must all precede
+# the generic workbook ones or every tab reads as 'active'.
 COMPLETION_BY_SOURCE = (
     ("complete", "completed"),
     ("not_coming", "not_coming"),
     ("not coming", "not_coming"),
+    ("entertain", "not_to_entertain"),
     ("main_data", "active"),
     ("time_table", "active"),
     ("timetable", "active"),
 )
+
+# Attributes the institute changes mid-enrollment: a student moves branch,
+# switches batch timing, or is handed to a different tutor, and the sheet is
+# overwritten in place. There is no history column, so each of these holds the
+# LATEST value, not the one that was true when the student joined.
+#
+# Two consequences, and both are reported rather than silently accepted:
+# - they must never be part of a join key (the join then fails precisely on the
+#   students who moved, who are the ones a retention report cares about), and
+# - a breakdown by them is an as-of snapshot. Revenue "by branch" credits the
+#   branch the student sits in today for fees paid at the one they left.
+MUTABLE_ATTRIBUTE_ROLES = ("branch", "faculty", "batch_time", "class_days")
+
+# The four timetable tabs are ONE roster split by membership, not four related
+# tables. Joining them keeps only the master's rows (a real run kept 16 of 406);
+# they have to be unioned. Precedence resolves a student left in two tabs — a
+# terminal state beats a staging one, because Main_data is where rows sit until
+# somebody moves them.
+LIFECYCLE_PRECEDENCE = ("completed", "not_to_entertain", "not_coming", "active")
 
 # Payment channel buried in receipt Description prose ("paid to ICICI",
 # "razorpay emi", "cheque no 123", "paid to sc"). Ordered: first match wins,
@@ -351,7 +478,12 @@ _FREE_TEXT_HEADER_RE = re.compile(
 class DataEngineerAgent:
     """Cleans a source CSV into a canonical dataframe + quality report."""
 
-    def __init__(self, output_dir: Optional[str] = None, salt: str = "fv-institute") -> None:
+    def __init__(
+        self,
+        output_dir: Optional[str] = None,
+        salt: str = "fv-institute",
+        churn_config: Optional[Mapping[str, Any]] = None,
+    ) -> None:
         """Create the agent.
 
         Args:
@@ -359,10 +491,16 @@ class DataEngineerAgent:
                 system temp dir.
             salt: Salt mixed into PII hashing so masked IDs are not trivially
                 reversible across datasets.
+            churn_config: Options for the time-dependent churn label —
+                `as_of` (defaults to the latest date in the data, because these
+                are historical exports), `grace_months`,
+                `duration_days_by_category`, `entertain_unconditional`.
+                See `agents/lifecycle.py`.
         """
 
         self.output_dir = output_dir or os.path.join(os.path.sep, "tmp")
         self.salt = salt
+        self.churn_config = dict(churn_config or {})
 
     # ------------------------------------------------------------------ run
 
@@ -405,6 +543,9 @@ class DataEngineerAgent:
                 split_multivalue=split_multivalue,
                 source_name=name,
                 source_domain=domain,
+                # The churn rule reads the lifecycle tab and the course length
+                # from different sheets; it runs once, on the merged frame.
+                derive_churn=False,
             )
             package["source_name"] = name
             package["source_domain"] = domain
@@ -422,10 +563,24 @@ class DataEngineerAgent:
                 quality_extra={"known_issues": issues or ["All sources were blocked."]},
             )
 
+        # Stack membership tabs of one roster BEFORE any join is considered —
+        # they are not related tables and a join keeps only one tab's rows.
+        frames, ready = self._union_lifecycle_partitions(frames, ready, issues)
+
         merged, relationships, join_issues = self._build_joined_frame(
             frames, ready, join_plan or []
         )
         issues.extend(join_issues)
+
+        # Now — and only now — is the whole rule visible in one frame.
+        canonical_columns = self._merged_roles(ready, merged)
+        churn_summary = self._derive_churn_labels(merged, canonical_columns, issues)
+        # Same reason: identity comes from the student sheet and the outstanding
+        # balance from the fee sheet, so "how much receivable sits on superseded
+        # admissions" is only answerable after the join.
+        if "is_repeat_enrollment" in merged.columns:
+            self._derive_current_admission(merged, canonical_columns, issues)
+
         stem = "multi_source"
         if data_sources:
             first_path = data_sources[0].get("path_or_query") or data_sources[0].get("name") or stem
@@ -436,12 +591,12 @@ class DataEngineerAgent:
         domain_metrics = self._domain_metrics(ready, frames)
         payment_reconciliation = self._build_payment_reconciliation(ready, frames)
         enquiry_conversion = self._build_enquiry_conversion(ready, frames)
-        canonical_columns = self._merged_roles(ready, merged)
         return {
             "status": "ready",
             "canonical_df_path": canonical_path,
             "row_count": len(merged),
             "schema": {col: str(dtype) for col, dtype in merged.dtypes.items()},
+            "churn_summary": churn_summary,
             "quality_report": {
                 "original_row_count": sum(
                     (p.get("quality_report") or {}).get("original_row_count", 0)
@@ -457,6 +612,10 @@ class DataEngineerAgent:
                 "known_issues": issues,
             },
             "canonical_columns": canonical_columns,
+            # The institute's own name for each mapped column, so operator-
+            # facing output uses their vocabulary rather than the internal
+            # role keys the metrics are wired to.
+            "field_names": self._field_names(canonical_columns),
             "time_dimensions": {
                 "event_date_sources": [
                     c for c in ("event_date", "admission_date", "joining_date", "issue_date")
@@ -514,8 +673,21 @@ class DataEngineerAgent:
                 row_count=0,
             )
 
+        load_issues: List[str] = []
         try:
             raw = pd.read_csv(csv_path)
+            # A sheet export whose data rows are wider than its header (a
+            # trailing comma on every line is the usual cause) does not raise:
+            # pandas quietly promotes the first field to the index and shifts
+            # every column one place left. Dates land in the name column, the
+            # cleaner finds no parseable date anywhere and drops 100% of rows.
+            # A non-RangeIndex from a header-ed read is the tell.
+            if not isinstance(raw.index, pd.RangeIndex):
+                raw = pd.read_csv(csv_path, index_col=False)
+                load_issues.append(
+                    "Data rows are wider than the header; re-read with "
+                    "index_col=False and ignored the extra trailing field(s). "
+                    "Check the source export for a trailing delimiter.")
         except Exception as exc:  # noqa: BLE001 - surface any parse failure to orchestrator
             return self._blocked(f"Failed to read CSV: {exc}", row_count=0)
 
@@ -523,6 +695,7 @@ class DataEngineerAgent:
             brief, raw, csv_path, date_format=date_format,
             split_multivalue=split_multivalue,
             source_name="primary", source_domain="single",
+            load_issues=load_issues,
         )
 
     def _clean_raw_frame(
@@ -534,14 +707,20 @@ class DataEngineerAgent:
         split_multivalue: bool = True,
         source_name: Optional[str] = None,
         source_domain: Optional[str] = None,
+        load_issues: Optional[List[str]] = None,
+        derive_churn: bool = True,
     ) -> JsonDict:
-        """Clean an already-loaded dataframe using the legacy single-source flow."""
+        """Clean an already-loaded dataframe using the legacy single-source flow.
+
+        `derive_churn` is False when this is one source of many: the churn rule
+        spans sheets, so it is applied once to the merged frame instead.
+        """
 
         original_rows = len(raw)
         if original_rows == 0:
             return self._blocked("Source CSV has zero rows.", row_count=0)
 
-        known_issues: List[str] = []
+        known_issues: List[str] = list(load_issues or [])
         df = raw.copy()
 
         df = self._drop_ref_columns(df, known_issues)
@@ -561,6 +740,10 @@ class DataEngineerAgent:
         # so a sheet with renamed/cryptic headers is still analysable rather than
         # blocked. Runs before the empty-check so a zero-keyword sheet survives.
         roles = self._discover_unclaimed_roles(df, roles, known_issues)
+        # Resolve the columns whose meaning depends on the sheet, not the
+        # header: a bare `Timestamp`, `Mode` or `Status` means something
+        # different on each one.
+        self._specialize_roles(df, roles, known_issues)
         if not roles:
             return self._blocked(
                 "Canonical column mapping failed: no recognizable roles in CSV.",
@@ -590,6 +773,9 @@ class DataEngineerAgent:
         # (Course_Completed / Not_Coming / Main_data) — the churn/completion
         # label the row data itself lacks.
         self._derive_completion_status(df, source_name, known_issues)
+        # Needs completion_status: how stale branch/faculty/batch are depends on
+        # which tab the row sits in.
+        self._flag_mutable_attributes(df, roles, known_issues)
 
         # Coalesce all date roles into one per-row event_date, then derive the
         # report time columns and drop only rows with no date at all.
@@ -619,13 +805,21 @@ class DataEngineerAgent:
         self._derive_status_flags(df, roles, known_issues)
         # Person identity also needs the raw (marker-stripped) name + phone;
         # the emitted person_id is already a salted hash.
-        self._derive_person_id(df, roles, known_issues)
+        person_id_basis = self._derive_person_id(df, roles, known_issues)
+        # Staff are hired out of the student body, so a name can appear on both
+        # sides of the same sheet. Detected before masking, for the same reason.
+        self._derive_staff_alumni(df, roles, known_issues)
 
         canonical_columns = self._mask_pii(df, roles, known_issues)
         # Whole PII columns are now hashed; scrub any contact detail typed inside
         # a retained free-text note so no raw phone/email reaches the report.
         self._scrub_free_text_pii(df, roles, known_issues)
         dedup_keys = self._dedupe(df, roles, known_issues)
+
+        churn_summary = (
+            self._derive_churn_labels(df, roles, known_issues)
+            if derive_churn else None
+        )
 
         canonical_path = self._write_parquet(df, source_path)
 
@@ -634,15 +828,26 @@ class DataEngineerAgent:
             "canonical_df_path": canonical_path,
             "row_count": len(df),
             "schema": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            # None when the source carries no lifecycle membership. Present, it
+            # records the as-of date the labels are true for — the same rows
+            # answer differently on a different date.
+            "churn_summary": churn_summary,
             "quality_report": {
                 "original_row_count": original_rows,
                 "drop_count": drop_count,
                 "dropped_reasons": dropped_reasons,
                 "null_rates": self._null_rates(df),
                 "deduplication_keys": dedup_keys,
+                # What person identity was actually built from. ["name"] alone
+                # means person-grain metrics were withheld as unreliable.
+                "person_id_basis": person_id_basis,
                 "known_issues": known_issues,
             },
             "canonical_columns": canonical_columns,
+            # The institute's own name for each mapped column, so operator-
+            # facing output uses their vocabulary rather than the internal
+            # role keys the metrics are wired to.
+            "field_names": self._field_names(canonical_columns),
             "time_dimensions": {
                 "event_date_sources": [
                     roles[r] for r in DATE_ROLES if r != "dob" and r in roles
@@ -722,6 +927,88 @@ class DataEngineerAgent:
                 df["is_not_coming"] = label == "not_coming"
                 return
 
+    @staticmethod
+    def _flag_mutable_attributes(
+        df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Record how current branch / faculty / batch actually are.
+
+        Confirmed by the institute: students change batch timing, tutor and
+        even branch during a course, the cell is overwritten, and **the edits
+        land almost entirely on Main_data** — that is the live roster. Once a
+        student is moved to Course_Completed or Not_Coming, their row stops
+        being maintained and freezes at whatever was true on the way out.
+
+        So these columns carry two different as-of dates in one frame, and a
+        breakdown that mixes them is comparing today's Main_data against a
+        2023 exit snapshot. `attribute_currency` marks which is which so the
+        two can be told apart or filtered; nothing is corrected, because there
+        is no history column to correct it from.
+        """
+        present = [r for r in MUTABLE_ATTRIBUTE_ROLES if roles.get(r)]
+        if not present:
+            return
+        names = ", ".join(f"{r} ('{roles[r]}')" for r in present)
+        note = (
+            f"{names} change during an enrollment and the sheet keeps only the "
+            f"latest value — there is no history column. Breakdowns by them are "
+            f"an as-of snapshot, not where the student actually spent the "
+            f"course, and they are excluded from join keys for the same reason."
+        )
+
+        if "completion_status" in df.columns:
+            currency = df["completion_status"].map(
+                lambda s: "current" if s == "active" else (
+                    "at_exit" if isinstance(s, str) else None
+                )
+            )
+            df["attribute_currency"] = currency
+            counts = currency.value_counts().to_dict()
+            if counts.get("at_exit"):
+                note += (
+                    f" Worse in this frame: only the active roster is still "
+                    f"maintained, so {counts.get('current', 0)} row(s) are "
+                    f"current and {counts['at_exit']} are frozen at the point "
+                    f"the student left. Marked in attribute_currency."
+                )
+        issues.append(note)
+
+    def _derive_churn_labels(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> Optional[JsonDict]:
+        """Attach the time-dependent churn label. Returns its summary, or None.
+
+        Computed on the FINAL frame only — after any union and join — because
+        the rule spans sheets: the lifecycle label comes from the timetable tab
+        the row sat in, while the course start and length come from the student
+        or fees sheet. Run per-source it would find one half of the rule and
+        report the whole roster unlabelled.
+
+        No-op without `completion_status`: no membership, no lifecycle ground
+        truth, and nothing here is worth guessing.
+        """
+        if "completion_status" not in df.columns:
+            return None
+        cfg = self.churn_config
+        result = lifecycle.churn_labels(
+            df, roles,
+            as_of=cfg.get("as_of"),
+            grace_months=int(cfg.get("grace_months", lifecycle.DEFAULT_GRACE_MONTHS)),
+            duration_days_by_category=cfg.get("duration_days_by_category"),
+            entertain_unconditional=bool(cfg.get("entertain_unconditional")),
+        )
+        for col in result["columns"].columns:
+            df[col] = result["columns"][col]
+        summary = result["summary"]
+        issues.append(
+            f"Churn labelled as of {summary['as_of'][:10]} "
+            f"({summary['as_of_source']}), {summary['grace_months']} month "
+            f"grace after course end: "
+            f"{', '.join(f'{k}={v}' for k, v in sorted(summary['counts'].items()))}"
+        )
+        issues.extend(summary["notes"])
+        return summary
+
     def _prefer_cleaned_columns(self, df: pd.DataFrame, issues: List[str]) -> pd.DataFrame:
         """When both `Cleaned X` and `X` exist, keep the cleaned one as `X`."""
         lower_map = {str(c).strip().lower(): c for c in df.columns}
@@ -754,6 +1041,12 @@ class DataEngineerAgent:
                 if col in taken:
                     continue
                 header = str(col).strip().lower()
+                # pandas names headerless columns "Unnamed: 18", which contains
+                # the substring "name" and so claimed the `name` role on any
+                # sheet that had no real name column. A placeholder header
+                # carries no information at all; value profiling handles these.
+                if _UNNAMED_HEADER_RE.match(header):
+                    continue
                 if any(bad in header for bad in exclude):
                     continue
                 if any(kw in header for kw in include):
@@ -761,6 +1054,90 @@ class DataEngineerAgent:
                     taken.add(col)
                     break
         return roles
+
+    # Values that identify a bare `Mode` column as the delivery mode rather
+    # than a payment or enquiry mode.
+    _LEARNING_MODES = {"online", "offline", "hybrid", "both"}
+
+    def _specialize_roles(
+        self, df: pd.DataFrame, roles: Dict[str, str], issues: List[str]
+    ) -> None:
+        """Give context-dependent columns their real name, without renaming keys.
+
+        Three headers in this estate mean different things on different sheets:
+
+        - `Timestamp` is the form-submission time. On the enquiry sheets that
+          *is* the enquiry date; on the admission form and student-data it is
+          the **join key between them** and there is nothing enquiry-ish about
+          it. Calling it `enquiry_date` everywhere invents a lead date for
+          every admission.
+        - `Mode` is online/offline delivery on student-data, and mode of
+          enquiry on a lead sheet.
+        - `Status` is fee status next to a pending column, and lifecycle status
+          next to a churn reason.
+
+        Contextual aliases are ADDED alongside the generic role rather than
+        replacing it: every derivation and metric is keyed on the generic name,
+        so renaming would break them, while the alias is what an operator sees
+        and what a question can name as a dimension.
+        """
+        added: List[str] = []
+
+        # --- Timestamp: submission record vs. the enquiry itself
+        enquiry_col = roles.get("enquiry_date")
+        if enquiry_col and str(enquiry_col).strip().lower() == "timestamp":
+            roles["record_timestamp"] = enquiry_col
+            explicit = next((c for c in df.columns
+                             if "date of enquiry" in str(c).strip().lower()), None)
+            if explicit:
+                # A real enquiry date exists, so the timestamp is only the
+                # submission record and must not stand in for a lead date.
+                roles["enquiry_date"] = explicit
+                added.append(f"'{enquiry_col}' is the submission timestamp "
+                             f"(join key), not the enquiry date — using "
+                             f"'{explicit}' for enquiry timing")
+            elif "admission_date" in roles or "joining_date" in roles:
+                # An admission-side sheet: the timestamp is when the form was
+                # filled, which is the admission event, not a prior enquiry.
+                roles.pop("enquiry_date", None)
+                added.append(f"'{enquiry_col}' treated as the record timestamp "
+                             f"(the admission/student-data join key), not an "
+                             f"enquiry date")
+
+        # --- Mode: resolved from its values
+        mode_col = roles.get("mode")
+        if mode_col is not None and mode_col in df.columns:
+            values = {str(v).strip().lower()
+                      for v in df[mode_col].dropna().unique()[:50]}
+            if values and values <= self._LEARNING_MODES:
+                roles["learning_mode"] = mode_col
+                added.append(f"'{mode_col}' resolved to learning mode "
+                             f"(online/offline delivery)")
+            elif "enquiry_date" in roles and "admission_date" not in roles:
+                roles["enquiry_mode"] = mode_col
+                added.append(f"'{mode_col}' resolved to enquiry mode")
+
+        # --- Status: fee vs lifecycle
+        status_col = roles.get("status")
+        if status_col is not None:
+            if "pending" in roles or "amount" in roles or "paid" in roles:
+                roles["fee_status"] = status_col
+                added.append(f"'{status_col}' resolved to fee status")
+            elif "status_reason" in roles or "completion_status" in df.columns:
+                roles["churn_status"] = status_col
+                added.append(f"'{status_col}' resolved to churn status")
+
+        # --- Tutor and Faculty are one person under two words
+        faculty_col = roles.get("faculty")
+        if faculty_col is not None:
+            header = str(faculty_col).strip().lower()
+            word = "tutor" if "tutor" in header else "faculty"
+            df["staff_role"] = word
+            added.append(f"'{faculty_col}' mapped to faculty; staff_role="
+                         f"'{word}' records which word the sheet used")
+
+        for note in added:
+            issues.append(f"Field naming: {note}")
 
     def _discover_unclaimed_roles(
         self, df: pd.DataFrame, roles: Dict[str, str], issues: List[str]
@@ -1455,6 +1832,49 @@ class DataEngineerAgent:
                     f"(honorifics/aliases); raw kept in '{fac_col}_raw'"
                 )
 
+        # Branch is a CLOSED set of three. A value outside it is a data-entry
+        # error, not a fourth site — a branch breakdown that accepts one invents
+        # a centre the institute does not have.
+        #
+        # Two kinds of error, handled differently. A known locality ("adajan",
+        # which is served by Pal) is resolved to its branch, because leaving it
+        # alone splits Pal's numbers across two rows of every breakdown; the
+        # original is kept in '<col>_locality' so the move can be audited or
+        # undone. Anything else is left exactly as written and flagged — quietly
+        # guessing a site would move a student between centres.
+        for role in ("branch", "preferred_branch"):
+            branch_col = roles.get(role)
+            if not branch_col or branch_col not in df.columns:
+                continue
+            if pd.api.types.is_numeric_dtype(df[branch_col]):
+                continue
+            df[branch_col] = df[branch_col].map(canonical_maps.canonicalize_branch)
+
+            served_by = df[branch_col].map(canonical_maps.branch_from_locality)
+            is_locality = served_by.notna()
+            if is_locality.any():
+                localities = sorted(set(df.loc[is_locality, branch_col].astype(str)))
+                df[f"{branch_col}_locality"] = df[branch_col].where(is_locality)
+                df.loc[is_locality, branch_col] = served_by[is_locality]
+                issues.append(
+                    f"{role} '{branch_col}': {int(is_locality.sum())} row(s) named "
+                    f"a locality instead of a site "
+                    f"({', '.join(localities[:5])}); resolved to the branch that "
+                    f"serves it. Original kept in '{branch_col}_locality'.")
+
+            known = df[branch_col].map(canonical_maps.is_known_branch)
+            unknown = df[branch_col].notna() & ~known
+            if unknown.any():
+                names = sorted(set(df.loc[unknown, branch_col].astype(str)))
+                df["is_known_branch"] = known | df[branch_col].isna()
+                issues.append(
+                    f"{role} '{branch_col}': {int(unknown.sum())} row(s) name "
+                    f"something outside the three branches "
+                    f"({', '.join(canonical_maps.BRANCHES)}): "
+                    f"{', '.join(names[:5])}. Kept as-is and flagged in "
+                    f"is_known_branch — these are not sites, and no locality "
+                    f"mapping is known for them.")
+
         course_col = roles.get("course")
         if course_col and course_col in df.columns and not pd.api.types.is_numeric_dtype(df[course_col]):
             pairs = df[course_col].map(canonical_maps.canonicalize_course)
@@ -1589,9 +2009,16 @@ class DataEngineerAgent:
 
         Uses the coalesced `event_date`, so a row is kept as long as *any* of
         its date roles is present (e.g. enquiry-only admission rows survive).
+
+        **A membership tab is exempt.** On the timetable sheets the fact is the
+        row's presence, not when it was typed: `Timestamp` is only filled for
+        rows created through the form, so 158 of 277 completions carry no date
+        at all. Dropping them deletes 57% of the completions and then trips the
+        drop-fraction guard, blocking the sheet outright. A labelled row with no
+        date is still a labelled row.
         """
         reasons: Dict[str, int] = {}
-        if "event_date" in df.columns:
+        if "event_date" in df.columns and not self._single_completion_label(df):
             before = len(df)
             df = df[df["event_date"].notna()]
             removed = before - len(df)
@@ -1601,9 +2028,13 @@ class DataEngineerAgent:
 
     # ------------------------------------------------------------ person id
 
+    # A discriminator populated on less than this share of rows splits people
+    # instead of separating them, so it is refused.
+    MIN_DISCRIMINATOR_COVERAGE = 0.80
+
     def _derive_person_id(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
-    ) -> None:
+    ) -> List[str]:
         """Stable cross-source person identity (student-id is NOT a person id).
 
         The same person re-enrolls under new student-ids (real data: Khiren
@@ -1613,31 +2044,200 @@ class DataEngineerAgent:
         (so "(cancelled)" variants hash identically) and BEFORE PII masking
         (needs the raw values); only the hash is emitted, nothing raw leaks.
 
-        Conditional emission: requires a name role. Phone missing -> name-only
-        key (documented limitation: a name collision without phones merges).
-        Adds person_enrollment_count (rows per person within this source) and,
-        only when repeats exist, is_repeat_enrollment.
+        Conditional emission: requires a name role, plus at least one
+        discriminator (phone, DOB or email) before any *person-grain* metric is
+        emitted. Names alone are not an identity here — on `fees-data`, which
+        carries no phone column, a name-only key merged 219 real people into
+        166 and inflated the repeat-enrollment count by 20%, silently. When
+        nothing discriminates, `person_id` is still emitted (it is the right
+        join key to a richer source) but `is_repeat_enrollment` is withheld and
+        the Analyst falls back rather than reporting a number built on
+        namesakes.
+
+        A discriminator is only used when it is populated on most rows: a
+        sparse phone column splits one person into "with phone" and "without
+        phone", which is the opposite failure and just as wrong.
+
+        Returns the basis actually used, for the quality report.
         """
         name_col = roles.get("name")
         if not name_col or name_col not in df.columns:
-            return
+            return []
         names = df[name_col].map(self._normalize_person_name)
-        phone_col = roles.get("student_mobile")
-        if phone_col and phone_col in df.columns:
-            phones = df[phone_col].map(self._normalize_phone_digits)
-        else:
-            phones = pd.Series("", index=df.index)
-        keys = (names + "|" + phones).where(names != "")
-        df["person_id"] = keys.map(self._hash_value)
+
+        parts = [names]
+        basis = ["name"]
+        for role, normalize in (
+            ("student_mobile", self._normalize_phone_digits),
+            ("dob", self._normalize_identity_date),
+            ("email", self._normalize_identity_email),
+        ):
+            col = roles.get(role)
+            if not col or col not in df.columns:
+                continue
+            values = df[col].map(normalize)
+            coverage = float((values != "").mean()) if len(values) else 0.0
+            if coverage < self.MIN_DISCRIMINATOR_COVERAGE:
+                if coverage:
+                    issues.append(
+                        f"person_id: ignored {col!r} as an identity "
+                        f"discriminator - populated on only {coverage:.0%} of "
+                        f"rows, so keying on it would split one person in two.")
+                continue
+            parts.append(values)
+            basis.append(role)
+
+        keys = parts[0]
+        for extra in parts[1:]:
+            keys = keys + "|" + extra
+        df["person_id"] = keys.where(names != "").map(self._hash_value)
 
         counts = df.groupby("person_id")["person_id"].transform("size")
         df["person_enrollment_count"] = counts.where(df["person_id"].notna())
+
+        if len(basis) == 1:
+            distinct = int(names[names != ""].nunique())
+            merged = int((counts > 1).sum())
+            issues.append(
+                f"person_id: no phone, date-of-birth or email in this source, "
+                f"so identity is name-only. {distinct} distinct name(s) cover "
+                f"{merged} row(s); namesakes and re-admissions are "
+                f"indistinguishable. Person-grain metrics are withheld - join "
+                f"a source with contact details to compute them.")
+            return basis
+
         n_repeat_rows = int((counts > 1).sum())
         if n_repeat_rows:
             df["is_repeat_enrollment"] = (counts > 1).fillna(False)
             issues.append(
-                f"person_id: {n_repeat_rows} row(s) belong to repeat-enrollment person(s)"
+                f"person_id: {n_repeat_rows} row(s) belong to repeat-enrollment "
+                f"person(s) (identity = {' + '.join(basis)})"
             )
+            self._derive_current_admission(df, roles, issues)
+        return basis
+
+    def _derive_current_admission(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Mark each person's latest admission, per the institute's own rule.
+
+            current(person) := max Date of Joining, tie-break max admission_id
+
+        `student-id` is an ADMISSION id: a student who re-enrols is issued a new
+        one (Khiren Jain holds 3, 244, 609, 1070). Their **current fee position
+        is the latest admission only** — earlier ids are closed history. Summing
+        every admission overstates both revenue and receivable.
+
+        Only emitted when repeat enrollments exist AND identity was confirmed by
+        a real discriminator: on a name-only key this would supersede one
+        namesake's live admission with another's, which is worse than not having
+        the flag. Deliberately advisory — no money metric is silently rewritten
+        to use it. The report says how much receivable sits on superseded rows
+        and the operator decides.
+        """
+        date_col = roles.get("joining_date") or roles.get("admission_date")
+        id_col = roles.get("student_id")
+        if not date_col and not id_col:
+            return
+
+        order = pd.DataFrame(index=df.index)
+        if date_col and date_col in df.columns:
+            order["_d"] = pd.to_datetime(df[date_col], errors="coerce")
+        if id_col and id_col in df.columns:
+            order["_i"] = pd.to_numeric(df[id_col], errors="coerce")
+        if order.empty:
+            return
+
+        # Rank descending within a person: 1 is the current admission. NaT/NaN
+        # sort last, so a dated row always beats an undated one.
+        order["_p"] = df["person_id"]
+        seq = (
+            order.sort_values(list(order.columns[:-1]), ascending=False,
+                              na_position="last", kind="stable")
+            .groupby("_p", sort=False)
+            .cumcount() + 1
+        ).reindex(df.index)
+
+        df["person_admission_seq"] = seq.where(df["person_id"].notna())
+        df["is_current_admission"] = (seq == 1).where(df["person_id"].notna())
+
+        superseded = int((seq > 1).sum())
+        if not superseded:
+            return
+        note = (
+            f"{superseded} row(s) are superseded admissions — the same person "
+            f"re-enrolled later. Flagged as is_current_admission=False "
+            f"(ordering: {'latest ' + date_col if date_col else ''}"
+            f"{', tie-break highest ' + id_col if id_col else ''})."
+        )
+        pending_col = roles.get("pending")
+        if pending_col and pending_col in df.columns:
+            stale = pd.to_numeric(
+                df.loc[seq > 1, pending_col], errors="coerce"
+            ).sum()
+            total = pd.to_numeric(df[pending_col], errors="coerce").sum()
+            if total:
+                note += (
+                    f" They carry {stale:,.0f} of {total:,.0f} outstanding "
+                    f"({stale / total:.0%}); by the institute's rule that is "
+                    f"closed history, not receivable."
+                )
+        issues.append(note)
+
+    def _derive_staff_alumni(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Flag student rows whose name also appears as faculty or counsellor.
+
+        The institute hires its staff out of its own students, so the same
+        human is a student in one column and the tutor in another. Three things
+        follow, and all of them are wrong if the collision goes unnoticed:
+
+        - **It is not a duplicate.** A student row and a faculty cell bearing
+          one name are the same person in two roles, not two records to merge.
+        - **It is not necessarily churn.** A student who joins the staff stops
+          attending as a student; landing in a not-coming tab makes them look
+          like a loss when they are the opposite.
+        - **Staff appear in two populations.** Counting them under both
+          "students per tutor" and "students" double-counts the human.
+
+        The flag is advisory and deliberately not acted on: a match may equally
+        be a namesake, which is the same ambiguity `person_id` refuses to
+        resolve on a name alone. Surfacing it lets the operator decide; merging
+        it silently would be a guess.
+        """
+        from . import canonical_maps as cm
+
+        name_col = roles.get("name")
+        staff_cols = [roles[r] for r in ("faculty", "counsellor")
+                      if r in roles and roles[r] in df.columns]
+        if not name_col or name_col not in df.columns or not staff_cols:
+            return
+
+        staff: set = set()
+        for col in staff_cols:
+            for value in df[col].dropna().unique():
+                # Faculty values carry honorifics ("Yash Kanodia Sir") that a
+                # student row never does; canonicalize before comparing.
+                normalized = cm.canonicalize_faculty(
+                    self._normalize_person_name(value))
+                if normalized:
+                    staff.add(normalized)
+        staff.discard("")
+        if not staff:
+            return
+
+        students = df[name_col].map(self._normalize_person_name)
+        hits = students.isin(staff) & (students != "")
+        if not hits.any():
+            return
+
+        df["is_staff_alumni"] = hits
+        issues.append(
+            f"{int(hits.sum())} student row(s) carry a name that also appears "
+            f"as faculty/counsellor on this sheet (staff are hired from the "
+            f"student body). Flagged as is_staff_alumni, NOT merged — the "
+            f"match may equally be a namesake.")
 
     @staticmethod
     def _normalize_person_name(value: Any) -> str:
@@ -1655,6 +2255,28 @@ class DataEngineerAgent:
             text = text[:-2]
         digits = _NON_DIGIT_RE.sub("", text)
         return digits[-10:] if len(digits) >= 10 else ""
+
+    @staticmethod
+    def _normalize_identity_date(value: Any) -> str:
+        """Date reduced to its digits, so 5/4/24 and 05/04/2024 hash alike.
+
+        Deliberately format-agnostic rather than parsed: a DOB used as an
+        identity discriminator only has to be *consistent* across the rows of
+        one person, and the sheets disagree about day-first vs month-first.
+        """
+        if pd.isna(value):
+            return ""
+        digits = _NON_DIGIT_RE.sub("", str(value).strip())
+        return digits if len(digits) >= 6 else ""
+
+    @staticmethod
+    def _normalize_identity_email(value: Any) -> str:
+        if pd.isna(value):
+            return ""
+        # Typed-in addresses carry stray spaces, and one sheet writes the dot
+        # before "com" as a comma.
+        text = re.sub(r"\s+", "", str(value).strip().lower()).replace(",", ".")
+        return text if "@" in text and "." in text.split("@")[-1] else ""
 
     # ------------------------------------------------------------------- PII
 
@@ -1760,23 +2382,57 @@ class DataEngineerAgent:
 
         Prefer a unique id (receipt_id / student_id). Otherwise fall back to a
         composite of person + contact + primary date.
+
+        An id column is only a natural key if it is actually unique *in this
+        frame*, which the institute's ids frequently are not:
+
+        - Receipt books are per-branch and restart every few hundred entries,
+          so the same receipt number is reused across branches and years. On
+          the admission sheet `Receipt ID` is a foreign key to the fee ledger,
+          not a row key at all — keying on it deleted 71 of 222 admissions.
+        - A receipt paid part-cash part-online is entered as two ledger rows
+          sharing one receipt id. Keying on it deletes a real payment and
+          understates collections.
+
+        So a candidate key is measured before it is trusted, and widened with
+        whatever date / amount / person columns exist when it fails. Rows are
+        only removed when the widened key still identifies a row.
         """
-        if "receipt_id" in roles:
-            key_cols = [roles["receipt_id"]]
-        elif "certificate_number" in roles:
-            key_cols = [roles["certificate_number"]]
-        elif (
+        if (
             "student_id" in roles
             and "source_domain" in df.columns
             and set(df["source_domain"].dropna().astype(str)).issubset({"finance"})
         ):
             return []
+
+        composite = [
+            roles[r]
+            for r in ("student_id", "name", "student_mobile", "enquiry_date", "joining_date")
+            if r in roles
+        ]
+        id_col = roles.get("receipt_id") or roles.get("certificate_number")
+        if id_col:
+            key_cols = [id_col]
+            if not self._is_row_key(df, key_cols):
+                # Widen with everything that distinguishes two rows sharing an
+                # id: when and how much, then who.
+                widened = key_cols + [
+                    roles[r] for r in ("receipt_date", "amount", "paid", "payment_mode")
+                    if r in roles and roles[r] not in key_cols
+                ]
+                widened += [c for c in composite if c not in widened]
+                if not self._is_row_key(df, widened):
+                    issues.append(
+                        f"{id_col!r} repeats and no composite key identifies a "
+                        f"row; kept every row rather than guess at duplicates.")
+                    return []
+                issues.append(
+                    f"{id_col!r} repeats in this source, so it is not a row "
+                    f"key here; deduplicated on {widened} instead.")
+                key_cols = widened
         else:
-            key_cols = [
-                roles[r]
-                for r in ("student_id", "name", "student_mobile", "enquiry_date", "joining_date")
-                if r in roles
-            ]
+            key_cols = composite
+
         if not key_cols:
             return []
         before = len(df)
@@ -1785,6 +2441,19 @@ class DataEngineerAgent:
         if removed:
             issues.append(f"Removed {removed} duplicate row(s) on {key_cols}")
         return key_cols
+
+    # Share of rows a candidate key may collapse before it stops being a key.
+    # Non-zero because genuine re-entered duplicates exist in every sheet; a
+    # key that folds away more than this is measuring something else.
+    MAX_KEY_COLLAPSE = 0.02
+
+    def _is_row_key(self, df: pd.DataFrame, key_cols: List[str]) -> bool:
+        """True when `key_cols` identifies a row rather than a group of them."""
+        cols = [c for c in key_cols if c in df.columns]
+        if not cols or df.empty:
+            return False
+        collapsed = int(df.duplicated(subset=cols, keep="first").sum())
+        return collapsed / len(df) <= self.MAX_KEY_COLLAPSE
 
     # ---------------------------------------------------------- multi-source
 
@@ -1807,6 +2476,186 @@ class DataEngineerAgent:
         root, ext = os.path.splitext(str(base))
         safe = re.sub(r"\W+", "_", str(name)).strip("_") or "source"
         return f"{root}_{safe}{ext or '.csv'}"
+
+    def _union_lifecycle_partitions(
+        self,
+        frames: Dict[str, pd.DataFrame],
+        packages: List[JsonDict],
+        issues: List[str],
+    ) -> Tuple[Dict[str, pd.DataFrame], List[JsonDict]]:
+        """Stack the timetable tabs into one roster instead of joining them.
+
+        Course_Completed / Not_Coming / NOT TO ENTERTRAIN / Main_data are the
+        same entity — one student roster partitioned by lifecycle membership.
+        The join path treats extra sources as related tables and left-joins them
+        onto a master, which keeps only the master's rows: supplying all four
+        tabs of the real workbook produced **16 rows out of 406**, every one of
+        them `active`, silently deleting every completion and every churn.
+
+        A source qualifies as a partition when its sheet name resolved a single
+        `completion_status` (see COMPLETION_BY_SOURCE). Fewer than two such
+        sources is not a partitioned roster, so nothing happens.
+
+        A student present in two tabs is kept once, at the most advanced label
+        (LIFECYCLE_PRECEDENCE), and marked `lifecycle_conflict` so the operator
+        can see the sheets disagree rather than inherit a silent choice.
+        """
+        members = [
+            p for p in packages
+            if p.get("source_name") in frames
+            and self._single_completion_label(frames[str(p.get("source_name"))])
+        ]
+        if len(members) < 2:
+            return frames, packages
+
+        names = [str(p.get("source_name")) for p in members]
+        parts = [frames[n] for n in names]
+        stacked = pd.concat(parts, ignore_index=True, sort=False)
+
+        rank = {label: i for i, label in enumerate(LIFECYCLE_PRECEDENCE)}
+        stacked["_lifecycle_rank"] = (
+            stacked["completion_status"].map(rank).fillna(len(rank)).astype(int)
+        )
+
+        key = [c for c in ("person_id",) if c in stacked.columns]
+        course_col = (members[0].get("canonical_columns") or {}).get("course")
+        if key and course_col and course_col in stacked.columns:
+            key.append(course_col)
+
+        # Only CONTRADICTIONS are collapsed. Two rows for one student in the
+        # same tab, or in two tabs at the same label, are left alone: students
+        # re-enroll (111 of 154 in the sample, up to 5 times), so same-label
+        # repeats are real enrollments, not copies. Dropping them here cost 41
+        # of 406 rows. A row that is both `completed` and `active`, though,
+        # cannot be two enrollments — that is a copy someone forgot to delete.
+        conflicts = 0
+        removed_by_union = 0
+        if key:
+            best = stacked.groupby(key, dropna=True)["_lifecycle_rank"].transform("min")
+            contested = stacked.groupby(key, dropna=True)["_lifecycle_rank"].transform(
+                "nunique"
+            ) > 1
+            contested = contested.fillna(False)
+            stacked["lifecycle_conflict"] = contested & (stacked["_lifecycle_rank"] == best)
+            conflicts = int(stacked.loc[contested, key[0]].nunique())
+            losers = contested & (stacked["_lifecycle_rank"] > best)
+            removed_by_union = int(losers.sum())
+            stacked = stacked[~losers]
+        stacked = stacked.drop(columns=["_lifecycle_rank"])
+
+        counts = stacked["completion_status"].value_counts().to_dict()
+        union_notes = [
+            f"Unioned {len(names)} lifecycle partition(s) of one roster "
+            f"({', '.join(names)}) into {len(stacked)} row(s): "
+            f"{', '.join(f'{k}={v}' for k, v in sorted(counts.items()))}. "
+            f"Joining them instead would have kept only one tab's rows."
+        ]
+        if conflicts:
+            union_notes.append(
+                f"{conflicts} student(s) carry contradicting lifecycle labels "
+                f"across tabs; kept at the most advanced one "
+                f"({' > '.join(LIFECYCLE_PRECEDENCE)}) and flagged in "
+                f"lifecycle_conflict. The sheets disagree — someone was copied "
+                f"rather than moved. Same-label repeats are NOT collapsed: "
+                f"students really do re-enroll."
+            )
+        issues.extend(union_notes)
+
+        union_name = self._partition_union_name(names)
+        stacked["source_name"] = union_name
+        merged_roles: Dict[str, str] = {}
+        for pkg in members:
+            merged_roles.update(pkg.get("canonical_columns") or {})
+
+        survivor = dict(members[0])
+        survivor["source_name"] = union_name
+        survivor["row_count"] = len(stacked)
+        survivor["canonical_columns"] = merged_roles
+        survivor["field_names"] = self._field_names(merged_roles)
+        survivor["canonical_df_path"] = self._write_parquet(
+            stacked, f"{union_name}_union.csv"
+        )
+        survivor["partition_members"] = names
+        # Roll the members' accounting up, or the run reports one tab's original
+        # row count against the whole union's output and the drop maths is a lie.
+        survivor["quality_report"] = self._merge_quality_reports(
+            members, len(stacked), union_notes, removed_by_union
+        )
+        survivor["schema"] = {c: str(t) for c, t in stacked.dtypes.items()}
+
+        frames = {n: f for n, f in frames.items() if n not in names}
+        frames[union_name] = stacked
+        packages = [p for p in packages if p.get("source_name") not in names]
+        packages.insert(0, survivor)
+        return frames, packages
+
+    @staticmethod
+    def _merge_quality_reports(
+        members: Sequence[JsonDict],
+        row_count: int,
+        notes: Sequence[str],
+        removed_by_union: int = 0,
+    ) -> JsonDict:
+        """Sum the member tabs' accounting so the union's drop maths is real.
+
+        `drop_count` is recomputed from (total rows in, rows out) rather than
+        summed, because the union itself removes the contradicting copy of a
+        student who sat in two tabs — a drop none of the members knows about.
+
+        The union's own removals are counted, not inferred by subtraction: each
+        member's per-source dedupe runs after its drop accounting is taken, so
+        subtracting would silently charge those rows to the union.
+        """
+        reports = [dict(p.get("quality_report") or {}) for p in members]
+        original = sum(int(r.get("original_row_count") or 0) for r in reports)
+        reasons: Dict[str, int] = {}
+        for r in reports:
+            for key, value in (r.get("dropped_reasons") or {}).items():
+                reasons[key] = reasons.get(key, 0) + int(value)
+        if removed_by_union:
+            reasons["contradicting_lifecycle_tabs"] = removed_by_union
+        residual = original - sum(reasons.values()) - row_count
+        if residual > 0:
+            reasons["deduplicated_within_source"] = residual
+
+        known: List[str] = []
+        for r in reports:
+            for issue in r.get("known_issues") or []:
+                if issue not in known:
+                    known.append(issue)
+        known.extend(notes)
+
+        merged = dict(reports[0])
+        merged.update({
+            "original_row_count": original,
+            "drop_count": original - row_count,
+            "dropped_reasons": reasons,
+            "known_issues": known,
+        })
+        return merged
+
+    @staticmethod
+    def _single_completion_label(frame: pd.DataFrame) -> bool:
+        """True when the whole frame carries exactly one lifecycle label.
+
+        That is the signature of a membership tab. A frame that mixes labels is
+        already a roster and must not be stacked onto anything.
+        """
+        if "completion_status" not in frame.columns:
+            return False
+        return frame["completion_status"].dropna().nunique() == 1
+
+    @staticmethod
+    def _partition_union_name(names: Sequence[str]) -> str:
+        """Name the union after the workbook the tabs came from, when they say.
+
+        `student_timetable__not_coming` -> `student_timetable`. Falls back to a
+        generic label so the name is never empty or misleadingly one tab's.
+        """
+        prefixes = {n.split("__")[0] for n in names if "__" in n}
+        if len(prefixes) == 1:
+            return f"{prefixes.pop()}_all_tabs"
+        return "lifecycle_roster"
 
     def _build_joined_frame(
         self,
@@ -1839,6 +2688,11 @@ class DataEngineerAgent:
                     name, domain, relation or {"confidence": "high", "keys": ["student_id"]},
                 )
                 joined = detail["status"] == "accepted"
+            elif "completion_status" in right.columns:
+                master, detail = self._join_lifecycle_roster(
+                    master, right, master_roles, right_roles, name, relation
+                )
+                joined = detail["status"] == "accepted"
             elif str(domain).startswith("admission"):
                 master, detail = self._join_admission_identity(
                     master, right, master_roles, right_roles, name, relation
@@ -1853,6 +2707,26 @@ class DataEngineerAgent:
             if joined:
                 accepted.append(detail)
                 joined_sources.add(name)
+                if detail.get("course_upgrades_matched"):
+                    issues.append(
+                        f"{detail['course_upgrades_matched']} row(s) matched "
+                        f"'{name}' on person alone: one enrollment recorded "
+                        f"under two course names, which is what a course "
+                        f"upgrade entered on only one sheet looks like. Only "
+                        f"done where the person had exactly one unmatched row "
+                        f"on each side, so there was nothing else it could be."
+                    )
+                if detail.get("unlabelled_master_rows"):
+                    issues.append(
+                        f"{detail['unlabelled_master_rows']} row(s) got no "
+                        f"lifecycle label from '{name}': "
+                        f"{detail['person_in_roster_other_course']} are people "
+                        f"the timetable knows but on a different course (their "
+                        f"label belongs to that enrollment, not this one), and "
+                        f"{detail['person_absent_from_roster']} are "
+                        f"{detail['people_absent_from_roster']} people the "
+                        f"timetable does not cover at all."
+                    )
             else:
                 rejected.append(detail)
                 issues.append(
@@ -2010,6 +2884,160 @@ class DataEngineerAgent:
                 aggregations[col] = "first"
         return renamed.groupby(key, as_index=False).agg(aggregations), True
 
+    def _join_lifecycle_roster(
+        self,
+        left: pd.DataFrame,
+        right: pd.DataFrame,
+        left_roles: Mapping[str, str],
+        right_roles: Mapping[str, str],
+        right_name: str,
+        relation: Optional[Mapping[str, Any]],
+    ) -> Tuple[pd.DataFrame, JsonDict]:
+        """Attach timetable lifecycle labels to the student master.
+
+        The timetable tabs carry no `student-id`, so the only link to the
+        student sheet is identity: the salted `person_id` (name + phone) plus
+        the canonicalized course. Without this the roster is left unjoined and
+        churn cannot be computed at all — the labels live on one sheet and the
+        course start and length on another.
+
+        The roster is collapsed to one row per (person, course) before the join,
+        by lifecycle precedence. It has no enrollment id, so a person who took
+        the same course twice cannot have their two attempts told apart; the
+        approximation is reported rather than hidden. Every other guard in
+        `_left_join_source` (overlap, cardinality, row multiplication) still
+        applies.
+        """
+        detail: JsonDict = {
+            "status": "rejected", "left_source": "master",
+            "right_source": right_name, "confidence": "medium",
+        }
+        lc_course, rc_course = left_roles.get("course"), right_roles.get("course")
+        if "person_id" not in left.columns or "person_id" not in right.columns:
+            detail["reason"] = (
+                "lifecycle roster needs person identity on both sides; one of "
+                "them has no phone, date-of-birth or email to resolve people by"
+            )
+            return left, detail
+        if not (lc_course and rc_course
+                and lc_course in left.columns and rc_course in right.columns):
+            detail["reason"] = "lifecycle roster needs a course column on both sides"
+            return left, detail
+
+        key = "__lifecycle_identity_key"
+        left = left.copy()
+        right = right.copy()
+        left[key] = self._composite_key(left, ["person_id", lc_course])
+        right[key] = self._composite_key(right, ["person_id", rc_course])
+
+        upgraded = self._rekey_course_upgrades(left, right, key)
+
+        rank = {label: i for i, label in enumerate(LIFECYCLE_PRECEDENCE)}
+        right["_lifecycle_rank"] = (
+            right["completion_status"].map(rank).fillna(len(rank)).astype(int)
+        )
+        before = len(right)
+        right = (
+            right.sort_values("_lifecycle_rank", kind="stable")
+            .drop_duplicates(subset=[key], keep="first")
+            .drop(columns=["_lifecycle_rank"])
+            .sort_index()
+        )
+        collapsed = before - len(right)
+
+        merged, join_detail = self._left_join_source(
+            left, right, key, key, right_name, "timetable",
+            relation or {"confidence": "medium", "keys": ["person_id", "course"]},
+        )
+        join_detail["match_method"] = "person_course"
+        if upgraded:
+            join_detail["course_upgrades_matched"] = upgraded
+        if join_detail.get("status") == "accepted":
+            join_detail.update(
+                self._lifecycle_coverage(merged, left, right, key)
+            )
+        if collapsed:
+            join_detail["collapsed_repeat_enrollments"] = collapsed
+            join_detail["note"] = (
+                f"{collapsed} roster row(s) were repeat enrollments on the same "
+                f"course; the timetable tabs carry no enrollment id, so they "
+                f"share one lifecycle label"
+            )
+        return merged.drop(columns=[key], errors="ignore"), join_detail
+
+    @staticmethod
+    def _rekey_course_upgrades(
+        left: pd.DataFrame, right: pd.DataFrame, key: str
+    ) -> int:
+        """Match one enrollment recorded under two different course names.
+
+        Confirmed by the institute: a student upgrades their course and the
+        change is entered on one sheet but not the other. It is then one
+        enrollment wearing two names, and a person+course join misses it —
+        losing a lifecycle label that genuinely belongs to that row.
+
+        Only the unambiguous case is repaired: a person with **exactly one**
+        unmatched row on each side. There is nothing else the roster row could
+        refer to, so its key is rewritten to the master's. Where a person has
+        several unmatched rows on either side the pairing is a guess — two real
+        enrollments look identical to one renamed enrollment — and they are left
+        unmatched rather than labelled on a coin flip.
+
+        Mutates `right` in place. Returns how many rows were re-keyed.
+        """
+        left_keys = set(left[key].dropna().astype(str))
+        right_keys = set(right[key].dropna().astype(str))
+        l_un = left[~left[key].astype(str).isin(right_keys)]
+        r_un = right[~right[key].astype(str).isin(left_keys)]
+        if l_un.empty or r_un.empty:
+            return 0
+
+        l_people = l_un["person_id"].astype(str)
+        r_people = r_un["person_id"].astype(str)
+        l_counts = l_people.value_counts()
+        r_counts = r_people.value_counts()
+        singles = set(l_counts[l_counts == 1].index) & set(r_counts[r_counts == 1].index)
+        singles.discard("nan")
+        if not singles:
+            return 0
+
+        target = dict(zip(l_people[l_people.isin(singles)],
+                          l_un.loc[l_people.isin(singles), key]))
+        rows = r_un.index[r_people.isin(singles)]
+        right.loc[rows, key] = r_people.loc[rows].map(target).values
+        return len(rows)
+
+    @staticmethod
+    def _lifecycle_coverage(
+        merged: pd.DataFrame, left: pd.DataFrame, right: pd.DataFrame, key: str
+    ) -> JsonDict:
+        """Explain the master rows the roster could not label.
+
+        "150 rows have no lifecycle state" is not an answer an operator can act
+        on. There are two very different causes and they need different fixes:
+
+        - the person is in the timetable, but under a DIFFERENT course. Their
+          label belongs to that other enrollment. It is deliberately not copied
+          across: a student can be `completed` in Excel and `not_coming` in
+          Python on the same day, and sharing the label would invent churn.
+        - the person is in no tab at all — the timetable workbook simply does
+          not cover them. That is a data-entry backlog, not a join failure.
+        """
+        matched = set(right[key].dropna().astype(str))
+        unmatched = left[~left[key].astype(str).isin(matched)]
+        if unmatched.empty:
+            return {"unlabelled_master_rows": 0}
+        people = set(right["person_id"].dropna().astype(str))
+        known_person = unmatched["person_id"].astype(str).isin(people)
+        return {
+            "unlabelled_master_rows": int(len(unmatched)),
+            "person_in_roster_other_course": int(known_person.sum()),
+            "person_absent_from_roster": int((~known_person).sum()),
+            "people_absent_from_roster": int(
+                unmatched.loc[~known_person, "person_id"].nunique()
+            ),
+        }
+
     def _join_admission_identity(
         self,
         left: pd.DataFrame,
@@ -2030,21 +3058,38 @@ class DataEngineerAgent:
                     detail["match_method"] = role
                     return merged, detail
 
-        composite_roles = ("name", "course", "branch")
-        if all(left_roles.get(r) and right_roles.get(r) for r in composite_roles):
-            left_key = "__admission_identity_key"
-            right_key = "__admission_identity_key"
-            left = left.copy()
-            right = right.copy()
-            left[left_key] = self._composite_key(left, [left_roles[r] for r in composite_roles])
-            right[right_key] = self._composite_key(right, [right_roles[r] for r in composite_roles])
-            if not left[left_key].dropna().duplicated().any() and not right[right_key].dropna().duplicated().any():
-                merged, detail = self._left_join_source(
-                    left, right, left_key, right_key, right_name, "admission",
-                    relation or {"confidence": "high", "keys": list(composite_roles)},
+        # Third field of the composite key. Branch used to sit here and must
+        # not: the institute moves students between branches (and changes their
+        # batch timing and faculty) mid-course. A mutable attribute in a join
+        # key fails exactly on the students who moved, which is the population
+        # a retention report most needs. An admission date is immutable, so it
+        # is tried first; branch is the last resort and downgrades confidence.
+        for third, method, confidence in (
+            ("admission_date", "name_course_admission_date", "high"),
+            ("joining_date", "name_course_joining_date", "high"),
+            ("branch", "name_course_branch", "medium"),
+        ):
+            composite_roles = ("name", "course", third)
+            if not all(left_roles.get(r) and right_roles.get(r) for r in composite_roles):
+                continue
+            left_key = right_key = "__admission_identity_key"
+            left_c = left.copy()
+            right_c = right.copy()
+            left_c[left_key] = self._composite_key(left_c, [left_roles[r] for r in composite_roles])
+            right_c[right_key] = self._composite_key(right_c, [right_roles[r] for r in composite_roles])
+            if left_c[left_key].dropna().duplicated().any() or right_c[right_key].dropna().duplicated().any():
+                continue
+            merged, detail = self._left_join_source(
+                left_c, right_c, left_key, right_key, right_name, "admission",
+                relation or {"confidence": confidence, "keys": list(composite_roles)},
+            )
+            detail["match_method"] = method
+            if third == "branch":
+                detail["caveat"] = (
+                    "matched on branch, which students change mid-course; any "
+                    "row for a student who moved branch will have missed"
                 )
-                detail["match_method"] = "name_course_branch"
-                return merged.drop(columns=[left_key], errors="ignore"), detail
+            return merged.drop(columns=[left_key], errors="ignore"), detail
 
         return left, {
             "status": "rejected", "left_source": "master", "right_source": right_name,
@@ -2135,6 +3180,31 @@ class DataEngineerAgent:
                 vals["lead_count"] = vals.get("lead_count", 0) + int(len(frame))
         return metrics
 
+    @staticmethod
+    def _field_names(roles: Mapping[str, str]) -> Dict[str, str]:
+        """Source column -> the institute's canonical name for it.
+
+        Only mapped roles appear; a discovered column keeps its own header,
+        because inventing a canonical name for something we merely profiled
+        would claim more understanding than we have.
+        """
+        return {column: CANONICAL_FIELD_NAMES[role]
+                for role, column in roles.items()
+                if role in CANONICAL_FIELD_NAMES and column}
+
+    @staticmethod
+    def _ledger_money_column(roles: Mapping[str, str]) -> Optional[str]:
+        """What a receipt row actually paid — never the fee it was paid against.
+
+        The receipt ledger carries BOTH `paid amt` (this transaction) and
+        `Total Fees` (the enrollment's whole obligation, repeated on every one
+        of that student's receipt rows). Summing the latter across rows
+        overstates collections by the number of installments: on the sample,
+        ₹1.73 crore against ₹71.3 lakh actually paid — 2.4x. `paid` wins, and
+        `amount` is only a fallback for a ledger that has no paid column.
+        """
+        return roles.get("paid") or roles.get("amount")
+
     def _build_payment_reconciliation(
         self, packages: Sequence[JsonDict], frames: Mapping[str, pd.DataFrame]
     ) -> Optional[JsonDict]:
@@ -2160,7 +3230,7 @@ class DataEngineerAgent:
             frame = frames.get(pkg.get("source_name"))
             if frame is None or "student_id" not in roles:
                 continue
-            money_col = roles.get("amount") or roles.get("paid")
+            money_col = self._ledger_money_column(roles)
             has_receipt = "receipt_id" in roles or "receipt_date" in roles
             if ledger is None and has_receipt and money_col in frame.columns:
                 ledger = (pkg, frame, roles)
@@ -2171,7 +3241,7 @@ class DataEngineerAgent:
 
         _, ldf, lroles = ledger
         sid_col = lroles["student_id"]
-        money_col = lroles.get("amount") or lroles.get("paid")
+        money_col = self._ledger_money_column(lroles)
         work = ldf[ldf[sid_col].notna()].copy()
         work["_sid"] = work[sid_col].astype(str).str.strip()
         work = work[work["_sid"] != ""]

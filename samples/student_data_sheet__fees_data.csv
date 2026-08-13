@@ -1,0 +1,421 @@
+student-id,Name,course category,Course,Total Fees,Status,Amt Pending,Branch,Description,Date of Joining (MM/DD/YY)
+1,Ananya Chandorkar,Data Analysis,Data Analysis,43200,Full Paid,0,Citylight,,02/04/2022
+2,Pooja Inamdar,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,40100,Full Paid,0,Pal,,04/04/2022
+3,Krupa Chaphekar,Data Analysis,Business Analytics,20300,Full Paid,0,Vesu,,07/04/2022
+4,Subin,Programming,Advanced Python Programming (5 Modules),20300,Full Paid,0,Pal,,14/04/2022
+5,Vihaan Wagle,Web Designing & Development,Full Stack Development,43200,Full Paid,0,Citylight,,15/04/2022
+6,Pooja Tembe,Programming,Python Programming,7500,Full Paid,0,Vesu,,22/04/2022
+7,Vihaan Wagle,Web Designing & Development,Full Stack Development,43200,Full Paid,0,Citylight,,25/04/2022
+8,Priya Kelkar ,Graphic Designing,Canva module 2,5000,Full Paid,0,Vesu,,28/04/2022
+9,Ananya Chandorkar,Programming,Advanced Python Programming (5 Modules) (Module 2),27800,Full Paid,0,Citylight,,03/05/2022
+10,Nidhi Oak ,Data Analysis,Business Analytics,14800,Full Paid,0,Pal,,10/05/2022
+11,Vansh Mhatre,Programming,c & c++,14900,Full Paid,0,Vesu,1000 disc at last payment,11/05/2022
+12,Garv Dandekar,Graphic Designing,Advanced Graphic Designing (6 mths),38300,Full Paid,0,Citylight,,12/05/2022
+13,Priya Kelkar,Graphic Designing,Graphic Designing,11300,Full Paid,0,Citylight,,12/05/2022
+14,Ananya Chandorkar,Accounting,Basic Computer Accounting module 2,3600,Full Paid,0,Pal,,13/05/2022
+15,Subin,Accounting,Advanced Computer Accounting,11300,Full Paid,0,Citylight,,15/05/2022
+16,subin,Data Analysis,Business Analytics,14800,Full Paid,0,citylight,,19/05/2022
+17,Dhruv Sathaye,school course,12th Computer Science,12400,Full Paid,0,Citylight,,19/05/2022
+18,Vihaan Sahasrabuddhe,Accounting,Basic Computer Accounting,5000,Full Paid,0,Citylight,,20/05/2022
+19,Divya Kalelkar,Programming,Scratch Programming,7500,Full Paid,0,Citylight,,20/05/2022
+20,Krupa Chaphekar,Web Designing & Development,Diploma in Web Development (m-1),73500,Full Paid,0,Vesu,,23/05/2022
+21,Ananya Inamdar,Programming,C & C++,14900,Full Paid,0,Citylight,,30/05/2022
+22,Riddhi Chandorkar,Graphic Designing,Adobe Photoshop,7500,Full Paid,0,Vesu,,30/05/2022
+23,Krupa Chaphekar (not coming),advanced certificate course,Advanced Certificate in Data Analytics & Data Science module 2,500,Full Paid,0,Pal,,06/06/2022
+24,Vansh,Programming,Advanced Python Programming (5 Modules),20300,Full Paid,0,Pal,,06/06/2022
+25,Nidhi Oak,Graphic Designing,Canva,3600,Full Paid,0,Pal,,07/06/2022
+26,Isha Vartak,advanced certificate course,Advanced Certificate in Data Analytics & Data Science module 2,54900,Full Paid,0,Citylight,,09/06/2022
+27,Krupa Ganvir,Digital Marketing,Social Media Marketing (DM-2),13400,Full Paid,0,Citylight,,12/06/2022
+28,Zeel Phadke,Advanced Excel,Advance Excel,6000,Full Paid,0,Citylight,,13/06/2022
+29,Samarth Gokhale,Advanced Excel,Advanced Excel (M-1 & M-2),11300,Full Paid,0,Citylight,,14/06/2022
+30,Priya Ganvir ,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,54900,Full Paid,0,Citylight,,15/06/2022
+31,Shreya Kelkar,Combo Course,COMBO COURSE (COMPUTER BASICS & ADVANCED EXCEL WITH POWER BI),8900,Full Paid,0,Vesu,,15/06/2022
+32,Jainam Joglekar,Graphic Designing,Advanced Graphic Designing (6 mths),28000,Full Paid,0,Pal,,15/06/2022
+33,Darsh Lele,advanced certificate course,Advanced Certificate in Python Development & Generative AI,40100,Full Paid,0,Pal,,16/06/2022
+34,Vansh Mhatre,Basic,Kids Course module 2,4500,Full Paid,0,vesu,,22/06/2022
+35,Joglekar Jainam,Front-end Development,Diploma in Front End Development,27900,Full Paid,0,Pal,,23/06/2022
+36,Niyati Barhate (Cancelled),Graphic Designing,Basic Graphic Designing,0,Full Paid,0,Pal,2400 refunded,17/07/2022
+37,Dhruv Yardi ,Data Analysis,Business Analytics,20300,Full Paid,0,Citylight,,17/07/2022
+38,Garv Dandekar ,school course,10th std school course,6700,Full Paid,0,Pal,,29/07/2022
+39,Urvi Mahabal ,Data Analysis,Data analysis ,31500,Full Paid,0,Pal,,05/08/2022
+40,Vansh Mhatre,Graphic Designing,Video Editing ,7500,Full Paid,0,Vesu,,12/08/2022
+41,Subin,Graphic Designing,Basic Graphic Designing,8200,Full Paid,0,Pal,,13/08/2022
+42,Ananya Sahasrabuddhe,Graphic Designing,Basic Graphic Designing,11300,Full Paid,0,Citylight,,24/08/2022
+43,Naisha Kelkar,Accounting,Advanced Computer Accounting (module 2 & 3),11300,Full Paid,0,Citylight,,31/08/2022
+44,Niyati Dhond,Data Analysis,Data Analysis,43200,Full Paid,0,Citylight,,01/09/2022
+45,Vihaan Sahasrabuddhe ,Programming,Core Java Programming,7500,Pending,3000,Citylight,,04/09/2022
+46,Devansh Limaye,Data Analysis,POWER BI,3600,Pending,2000,pal,,12/09/2022
+47,Kavya Chandorkar ,Advanced Excel,Advanced Excel (M-1 & M-2),11300,Full Paid,0,Vesu,,14/09/2022
+48,Keya Talpade,Programming,Scratch Programming ,7500,Full Paid,0,Citylight,,19/09/2022
+50,Advait Vartak,Data Analysis,power bi,5000,Full Paid,0,Vesu,,07/10/2022
+51,Bhide Sanya,Digital Marketing,Digital Marketing (6 months),10900,Full Paid,0,Pal,,14/10/2022
+52,Ananya Nadkarni,Front-end Development,Diploma in Front End Development,27900,Full Paid,0,Pal,,17/10/2022
+53,Avni Godbole,Web Designing & Development,Full Stack Development module 2,31500,Full Paid,0,Pal,,20/10/2022
+54,Riddhi Rege,Basic,Kids Course,4500,Full Paid,0,Citylight,,22/10/2022
+55,Pooja Sathaye,Digital Marketing,Digital Marketing & SEO,31500,Full Paid,0,Pal,,24/10/2022
+56,Tanvi Velankar,Programming,Advanced Python Programming (5 Modules),20300,Full Paid,0,Pal,,24/10/2022
+57,Siddhi Khaparde ,Data Analysis,Power BI,5000,Full Paid,0,Vesu,,11/11/2022
+58,Rudra Ahluwalia,Graphic Designing,Basic Graphic Designing,8200,Full Paid,0,Pal,,12/11/2022
+59,Samarth Gokhale,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,54900,Full Paid,0,Vesu,,16/11/2022
+60,Pooja Tembe ,Accounting,basic computer accounting,5000,Full Paid,0,Vesu,,24/11/2022
+61,Sanya Ranadive,Web Designing & Development,Full Stack Development,43200,Full Paid,0,Vesu,,27/11/2022
+62,Keya Mahabal,Programming,Core Python Programming,4400,Full Paid,0,Pal,1000 disc at last payment,01/12/2022
+63,Pooja Inamdar,Front-end Development,diploma in front end development,38200,Full Paid,0,vesu,,02/12/2022
+64,Radhika Bapat,Basic,Kids Course,3300,Full Paid,0,Vesu,,04/12/2022
+65,Dhruv Yardi,Accounting,Computer Accounting,5000,Full Paid,0,Vesu,,11/12/2022
+66,Shaurya Wadekar,Graphic Designing,Adobe Photoshop,7500,Full Paid,0,Vesu,300 more final disc at last payment,14/12/2022
+67,Samarth Gokhale,Programming,Advanced Python Programming (5 Modules),20300,Full Paid,0,Pal,,17/12/2022
+68,Isha Vartak,advanced certificate course,Advanced Certificate in Python Development & Generative AI,54900,Full Paid,0,Citylight,,18/12/2022
+69,Vedant Ranadive,Digital Marketing,Digital Marketing & SEO (m-1),43200,Pending,14400,Vesu,Default,19/12/2022
+70,dhruv tembe,Accounting,Computer Accounting,5000,Full Paid,0,Citylight,,27/12/2022
+71,Dhruv Tembe,Data Analysis,Business Analytics,20800,Pending,12800,Vesu,,05/01/2023
+72,Mansi,Graphic Designing,Adobe Photoshop,7600,Full Paid,0,Vesu,,12/01/2023
+73,TIRTH GANVIR,Programming,Advanced Python Programming (5 Modules),20800,Full Paid,0,Pal,,14/01/2023
+74,Arnav Bapat,Graphic Designing,Basic Graphic Designing,11600,Full Paid,0,Citylight,,17/01/2023
+75,Vedant Tembe,Basic,Kids Course,4600,Full Paid,0,Vesu,,19/01/2023
+76,Mihir Bapat,Graphic Designing,graphic designing,11600,Full Paid,0,Citylight,,20/01/2023
+77,Darsh Chaphekar,Data Analysis,Power BI,3700,Full Paid,0,Pal,,25/01/2023
+78,Zeel Jamdar,Programming,Core Python Programming,6100,Full Paid,0,Vesu,,29/01/2023
+79,riddhi chandorkar,school course,11th IP,7400,Full Paid,0,Pal,,01/02/2023
+80,Tanvi Mhatre ,school course,11TH IP,10200,Full Paid,0,Vesu,,02/02/2023
+81,Darsh Ganvir,Front-end Development,Diploma in Front End Development,28500,Full Paid,0,Pal,,02/02/2023
+82,Karnik Tanish,Data Analysis,Business Analytics,20800,Pending,9800,Vesu,,07/02/2023
+83,Lakshya Gokhale,Programming,C Programming (with zero module),6100,Full Paid,0,Vesu,,08/02/2023
+84,Charvi Limaye,Digital Marketing,Digital Marketing (6 months),11200,Full Paid,0,Pal,,15/02/2023
+85,Namra Sahasrabuddhe,Programming,C Programming (6 months),6100,Full Paid,0,pal,,15/02/2023
+86,Manan Inamdar ,Advanced Excel,Advance Excel,6100,Full Paid,0,Vesu,,17/02/2023
+87,Kavya Dandekar,Basic,Computer Basics,3000,Pending,1300,Pal,,18/02/2023
+88,Ishan Sathaye,Graphic Designing,Canva,5100,Full Paid,0,Citylight,,19/02/2023
+89,Jainam Bhide,Basic,Computer Basics,4100,Full Paid,0,Citylight,,24/02/2023
+90,Keya Kelkar,school course,10th std school course,6800,Full Paid,0,Pal,,27/02/2023
+91,Riddhi Inamdar,Accounting,Basic Computer Accounting,3700,Pending,2400,Pal,Default,06/03/2023
+92,Keya Mahabal,Digital Marketing,Digital Marketing & SEO,32300,Full Paid,0,Pal,,12/03/2023
+93,Tanish Joglekar,Accounting,Computer Accounting,5100,Full Paid,0,Citylight,,15/03/2023
+94,Riddhi Phadke ,Data Analysis,Business Analytics (M-2 & M-3),15200,Pending,-15100,Pal,,15/03/2023
+95,Bhavya Paranjape,Graphic Designing,Advanced Graphic Designing (6 mths) (6 months),39200,Full Paid,0,Vesu,,21/03/2023
+96,Devansh Limaye,Basic,Kids Course,3400,Full Paid,0,Pal,,27/03/2023
+97,Yashvi Lele,Programming,Advanced Python Programming (5 Modules) (M-2 & M-3),20800,Full Paid,0,Pal,,28/03/2023
+98,Tanvi Mhatre ,Digital Marketing,Digital Marketing ,15300,Full Paid,0,Vesu,,29/03/2023
+99,Mahek Ranadive,Data Analysis,Business Analytics,20800,Full Paid,0,Vesu,,07/04/2023
+100,Isha Vartak,Graphic Designing,Video Editing,7600,Full Paid,0,Vesu,,12/04/2023
+101,Advait Paranjape,Basic,Computer Basics,4100,Full Paid,0,Citylight,,28/04/2023
+102,Jiya Sahasrabuddhe,Graphic Designing,Basic Graphic Designing (m-1),11600,Full Paid,0,Vesu,,29/04/2023
+104,Raghav Nadkarni,Graphic Designing,Basic Graphic Designing,8400,Full Paid,0,Pal,,30/04/2023
+105,Tanish Lele,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,56200,Full Paid,0,Vesu,,01/05/2023
+106,Aarav Jamdar,Programming,Advanced Python Programming (5 Modules),20800,Full Paid,0,Pal,,04/05/2023
+107,Dhruv Tembe ,Advanced Excel,Advance Excel ,6100,Full Paid,0,Vesu,,10/05/2023
+108,Namra Yardi,Programming,Advanced Python Programming (5 Modules),28500,Full Paid,0,NA,,18/05/2023
+109,VEDANT CHANDORKAR,Data Analysis,Business Analytics module 2,20800,Full Paid,0,Citylight,,23/05/2023
+110,Jiya Sahasrabuddhe,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,56200,Full Paid,0,Vesu,,25/05/2023
+111,Dhruv Tembe,Front-end Development,Diploma in Front End Development (6 months),39100,Full Paid,0,Vesu,,03/06/2023
+112,Keya Kelkar,Programming,Python OOP,7600,Full Paid,0,Citylight,,04/06/2023
+113,Jainam Bhide,school course,11th IP (M-2 & M-3),10200,Full Paid,0,Vesu,,07/06/2023
+114,Charvi Kirloskar,Programming,Scratch Programming (m-1),7600,Full Paid,0,Citylight,,08/06/2023
+115,hetvi gokhale,Programming,Core Python Programming,4500,Full Paid,0,Pal,,17/06/2023
+116,Aditi Godbole,Programming,Whole Python Programming,7600,Full Paid,0,Vesu,,18/06/2023
+117,Arnav Bapat,Data Analysis,Power BI (module 2 & 3),5100,Full Paid,0,Vesu,,19/06/2023
+118,Niyati Barhate,Programming,Python OOP,7600,Full Paid,0,Citylight,,20/06/2023
+119,Niyati Barhate,Graphic Designing,Graphic Designing,11600,Full Paid,0,,,23/06/2023
+120,Rudra Nene ,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,56200,Full Paid,0,Citylight,,24/06/2023
+121,Priya Ranadive,Programming,C & C++,15300,Full Paid,0,Citylight,,03/07/2023
+122,Anish Deolekar,Data Analysis,Data Analysis,32300,Full Paid,0,Pal,,17/07/2023
+123,Jiya Kelkar (Admission Cancelled),Graphic Designing,Adobe Photoshop,1700,Full Paid,0,Citylight,admisison cancelled fees refunded on 18/9/23,24/07/2023
+124,niyati dhond,Data Analysis,Business Analytics ,20800,Full Paid,0,Citylight,,27/07/2023
+125,Vedant Wagle,Programming,Python OOP,5600,Full Paid,0,Pal,,28/07/2023
+126,Rachit Wadekar,Advanced Excel,Advance Excel,4500,Full Paid,0,Pal,,31/07/2023
+127,Priya Ranadive,Graphic Designing,Graphic Designing,11600,Full Paid,0,Vesu,,02/08/2023
+128,Aarav Ranadive,school course,12th Computer Science ,12800,Full Paid,0,Vesu,,06/08/2023
+129,Charvi Chandorkar,Web Designing & Development,Full Stack Development,32300,Full Paid,0,Pal,,12/08/2023
+130,Janvi Lele ,Basic,Computer Basics,4100,Full Paid,0,Citylight,,20/08/2023
+131,Sachi Jamdar,Programming,Scratch Programming,7600,Full Paid,0,Citylight,,20/08/2023
+132,Khushi Joglekar,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI),9100,Full Paid,0,Vesu,,26/08/2023
+133,Rachit Wadekar ,Graphic Designing,Advanced Graphic Designing (6 mths),28600,Full Paid,0,Pal,,26/08/2023
+134,Devansh Bapat ,Advanced Excel,Advance Excel,6100,Full Paid,0,Citylight,,27/08/2023
+135,Mihir Nadkarni,Graphic Designing,Advanced Graphic Designing (6 mths),39200,Full Paid,0,Vesu,,30/08/2023
+136,Tirth Ganvir,Front-end Development,Diploma in Front End Development,39100,Full Paid,0,Citylight,,31/08/2023
+137,Tanvi Karnik,Front-end Development,Diploma in Front End Development,39100,Full Paid,0,Vesu,,09/09/2023
+138,Dhruv Sathaye,Web Designing & Development,Diploma in Web Development,54900,Full Paid,0,Pal,,21/09/2023
+139,Anish Bhide,Web Designing & Development,Diploma in Web Development,75200,Full Paid,0,Citylight,,25/09/2023
+140,Siddhi Khaparde,Programming,Core Python Programming,4500,Full Paid,0,Pal,,26/09/2023
+141,Krish Gokhale,Programming,Core Python Programming,4500,Full Paid,0,pal,,03/10/2023
+142,SHAURYA KELKAR,school course,11th IP,10200,Full Paid,0,Vesu,,04/10/2023
+143,Namra Sahasrabuddhe ,Advanced Excel,Advance Excel,4500,Full Paid,0,Pal,,09/10/2023
+144,Urvi Godbole,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,56200,Full Paid,0,Citylight,,11/10/2023
+145,Krupa Velankar,Programming,Advanced Python Programming (5 Modules) (6 months),28500,Full Paid,0,Vesu,300 more final disc at last payment,12/10/2023
+146,Bhavya Paranjape,Digital Marketing,Digital Marketing & SEO,44200,Full Paid,0,Vesu,,15/10/2023
+147,Dhruv Godbole,Basic,Computer Basics & Scratch Programming,5300,Full Paid,0,Pal,,16/10/2023
+148,Dhruv Sathaye,Accounting,Advanced Computer Accounting (Module 2),11600,Full Paid,0,Citylight,,17/10/2023
+149,ISHA KHAPARDE ,Data Analysis,Data Analysis,44200,Pending,-22100,Vesu,,20/10/2023
+150,Sachi Paranjape ,Programming,Scratch Programming,5600,Full Paid,0,Pal,,21/10/2023
+151,Riddhi Inamdar,Digital Marketing,Digital Marketing & SEO,44200,Full Paid,0,Vesu,,25/10/2023
+152,Tirth Tembe,Digital Marketing,Digital Marketing,15300,Full Paid,0,Vesu,,26/10/2023
+153,Ananya Chandorkar,Accounting,Computer Accounting,5100,Full Paid,0,Citylight,,28/10/2023
+154,Pooja Inamdar,Data Analysis,Power BI,3700,Full Paid,0,Pal,,02/11/2023
+155,Ananya Chandorkar,Programming,Advanced Python Programming (5 Modules),28500,Full Paid,0,Citylight,,08/11/2023
+156,Subin,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI),9100,Full Paid,0,NA,,09/11/2023
+157,Vihaan Wagle,Advanced Excel,Advance Excel,4500,Full Paid,0,Pal,,12/11/2023
+158,Pooja Tembe,UI UX Designing,UI & UX development,37800,Full Paid,0,Citylight,,16/11/2023
+160,Jainam Deolekar,school course,12th Computer Science (with zero module),9300,Pending,9200,Pal,,17/11/2023
+161,Zeel Phadke,Accounting,Computer Accounting,5100,Full Paid,0,Vesu,,17/11/2023
+162,Shaurya Ubhaykar,Accounting,Computer Accounting,3700,Full Paid,0,Pal,,18/11/2023
+163,Charvi Limaye,Digital Marketing,Social Media Marketing (DM-2) (m-1),13800,Full Paid,0,Vesu,,20/11/2023
+164,Vihaan Wagle,Basic,COMPUTER BASICS,3000,Full Paid,0,Pal,,23/11/2023
+165,Lakshya Gokhale,Basic,Computer Basics & Scratch Programming,7200,Pending,4700,Citylight,,25/11/2023
+166,Devansh Wadekar,Web Designing & Development,Full Stack Development,32300,Full Paid,0,Pal,,29/11/2023
+167,Priya Chaphekar,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI),6600,Full Paid,0,Pal,,30/11/2023
+168,Krupa Ganvir,UI UX Designing,UI & UX development ,27600,Full Paid,0,Pal,,30/11/2023
+169,Urvi Godbole,Digital Marketing,Social Media Marketing (DM-2),13800,Full Paid,0,Citylight,,30/11/2023
+170,Dhruv Sathaye,Front-end Development,Diploma in Front End Development,39100,Full Paid,0,Vesu,,02/12/2023
+171,Paranjape Advait,Web Designing & Development,Diploma in Web Development,75200,Full Paid,0,Citylight,,08/12/2023
+172,Divya Kalelkar,Basic,Kids Course,4600,Full Paid,0,Citylight,,08/12/2023
+173,Rachit Hardikar,Graphic Designing,Advanced Graphic Designing (6 mths) (6 months),39200,Full Paid,0,Vesu,,11/12/2023
+174,Ananya Inamdar,Graphic Designing,Advanced Graphic Designing (6 mths),28600,Full Paid,0,Pal,,21/12/2023
+175,Riddhi Chandorkar,Graphic Designing,Adobe Photoshop (6 months),7600,Full Paid,0,Vesu,,23/12/2023
+176,Pooja Lele,Programming,Scratch Programming,7600,Full Paid,0,Vesu,,23/12/2023
+177,Vansh ,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,62200,Full Paid,0,Citylight,,04/01/2024
+178,Tanvi Mhatre,Digital Marketing,Digital Marketing,12400,Full Paid,0,vesu,,10/01/2024
+179,Isha Vartak,Digital Marketing,Social Media Marketing (DM-2),11100,Full Paid,0,Pal,,12/01/2024
+180,Zeel Phadke ,Accounting,Basic Computer Accounting,5600,Full Paid,0,,,12/01/2024
+181,Zeel Phadke,Graphic Designing,Advanced Graphic Designing (6 mths) (M-1),31700,Full Paid,0,Pal,,16/01/2024
+182,Vedant Chandorkar ,Graphic Designing,Canva,5600,Pending,3500,Pal,,23/01/2024
+183,Priya Ganvir,advanced certificate course,Advanced Certificate in Python Development & Generative AI,62200,Full Paid,0,Citylight,,24/01/2024
+184,Shreya Kelkar,Front-end Development,Diploma in Front End Development,43200,Full Paid,0,Citylight,,30/01/2024
+185,Priya Kelkar,Programming,Scratch Programming,8500,Full Paid,0,Vesu,,04/02/2024
+186,Darsh Lele,school course,10th std school course,7500,Full Paid,0,Pal,,07/02/2024
+187,Nidhi Wadekar ,Digital Marketing,Social Media Marketing (DM-2) (M-1),15200,Full Paid,0,Vesu,,09/02/2024
+188,pranav joglekar,Data Analysis,Business Analytics,23000,Full Paid,0,Vesu,,10/02/2024
+189,Niyati Barhate,Digital Marketing,Digital Marketing (6 months),12400,Full Paid,0,Pal,,10/02/2024
+190,Dhruv Yardi ,Front-end Development,Diploma in Front End Development,43200,Full Paid,0,Vesu,,17/02/2024
+191,Vansh Oak,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI) (Online),7300,Full Paid,0,Pal,,23/02/2024
+192,Mahabal Urvi,Graphic Designing,Graphic Designing ,12800,Full Paid,0,Citylight,,23/02/2024
+193,Kavya Chandorkar,UI UX Designing,UI & UX development,30500,Full Paid,0,Pal,,01/03/2024
+194,Hetvi Deolekar,Accounting,Computer Accounting,5600,Full Paid,0,Citylight,,03/03/2024
+195,ANANYA SAHASRABUDDHE,Web Designing & Development,diploma in web development,60700,Full Paid,0,Pal,,03/03/2024
+196,Naisha Kelkar,Programming,Python OOP,6200,Full Paid,0,Pal,,09/03/2024
+197,niyati dhond,school course,12th Computer Science,14100,Full Paid,0,Citylight,,18/03/2024
+198,Krish Kelkar ,Programming,Core Python Programming,6800,Full Paid,0,Vesu,,19/03/2024
+199,Devansh Limaye,Programming,C Programming,6800,Full Paid,0,Citylight,,22/03/2024
+200,Kavya Chandorkar ,Basic,COMPUTER BASICS & SCRATCH PROGRAMMING,8000,Full Paid,0,Vesu,,22/03/2024
+201,Keya Talpade,Basic,computer basics,4500,Full Paid,0,Citylight,,29/03/2024
+202,Advait Vartak (cancelled),Web Designing & Development,Web Designing,1000,Full Paid,0,Pal,2400 refunded,05/04/2024
+203,Sanya Bhide ,Data Analysis,Data Analysis ,48900,Full Paid,0,Citylight,,05/04/2024
+204,Ananya Nadkarni,Accounting,Computer Accounting ,5600,Full Paid,0,Citylight,,05/04/2024
+205,Avni Godbole,Web Designing & Development,Web Designing,18600,Full Paid,0,Citylight,,10/04/2024
+206,Darsh Lele,Graphic Designing,Basic Graphic Designing (Online),12800,Full Paid,0,Citylight,,11/04/2024
+207,Namra Yardi,school course,12th Computer Science (6 months),10300,Full Paid,0,Pal,,15/04/2024
+208,Tanvi Velankar,Accounting,Computer Accounting,5600,Full Paid,0,Citylight,,07/05/2024
+209,Siddhi Khaparde,Digital Marketing,Digital Marketing & SEO (M-1),48900,Full Paid,0,Vesu,,14/05/2024
+210,Rudra Ahluwalia,Advanced Excel,Advance Excel 1&2,6800,Full Paid,0,Citylight,,15/05/2024
+211,Krupa Velankar,Programming,C & C++,16900,Full Paid,0,Citylight,,18/05/2024
+212,Keya Kelkar,Programming,C Programming,6800,Full Paid,0,Citylight,,20/05/2024
+213,Anish Bhide,Accounting,Computer Accounting,5600,Full Paid,0,Vesu,,29/05/2024
+214,RIDDHI CHANDORKAR ,Accounting,Advanced Computer Accounting module 2,9300,Full Paid,0,Pal,,06/06/2024
+215,Rachit Hardikar,Programming,C Programming (M-1),6800,Full Paid,0,Citylight,,09/06/2024
+216,Radhika Bapat,Web Designing & Development,Web Designing (M-1),18600,Full Paid,0,Citylight,,12/06/2024
+217,keya kelkar,Graphic Designing,Advanced Graphic Designing (6 mths),43400,Full Paid,0,Vesu,,12/06/2024
+218,Shaurya Wadekar,Programming,Core Python Programming,6800,Full Paid,0,Vesu,,13/06/2024
+219,Devansh Limaye,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI),7300,Full Paid,0,Pal,,16/06/2024
+220,Anish Bhide,Advanced Excel,Advanced Excel (M-1 & M-2),9300,Full Paid,0,Pal,,16/06/2024
+221,Shreya Kelkar,Accounting,Basic Computer Accounting module 2,4100,Full Paid,0,Pal,,18/06/2024
+222,Dhruv Tembe,Front-end Development,Diploma in Front End Development,43200,Full Paid,0,Pal,,19/06/2024
+223,Dhruv Tembe,Digital Marketing,Social Media Marketing (DM-2),15200,Full Paid,0,Citylight,,19/06/2024
+224,Namra Sahasrabuddhe,Accounting,Basic Computer Accounting,4100,Full Paid,0,Pal,,26/06/2024
+225,Tirth Ganvir ,Digital Marketing,Social Media Marketing (DM-2),11100,Full Paid,0,Pal,,28/06/2024
+226,Bapat Arnav ,Graphic Designing,Video Editing,8500,Full Paid,0,Citylight,,30/06/2024
+227,Vedant Tembe ,school course,12th Computer Science,10300,Full Paid,0,Pal,,08/07/2024
+228,Mihir Bapat ,Digital Marketing,Social Media Marketing (DM-2),15200,Pending,14700,Citylight,,08/07/2024
+229,Darsh Chaphekar,Accounting,advanced computer accounting,12800,Full Paid,0,Pal,,09/07/2024
+230,Zeel Jamdar,Digital Marketing,Digital Marketing,16900,Full Paid,0,Citylight,,09/07/2024
+231,Jiya Dhond,Graphic Designing,Video Editing,8500,Full Paid,0,NA,,10/07/2024
+232,Tanvi Mhatre,Advanced Excel,Advanced Excel (M-1 & M-2),12800,Full Paid,0,Citylight,,14/07/2024
+233,Samarth Gokhale,Digital Marketing,Social Media Marketing (DM-2),15200,Full Paid,0,Citylight,,19/07/2024
+234,Tanish Karnik (Admission Cancelled),Accounting,Advanced Computer Accounting,1000,Full Paid,0,Pal,,21/07/2024
+235,Gokhale Lakshya,Data Analysis,Data Analysis,48900,Full Paid,0,Citylight,,22/07/2024
+237,Charvi Limaye,Graphic Designing,Adobe Photoshop,8500,Full Paid,0,Vesu,,28/07/2024
+238,Namra Sahasrabuddhe ,Web Designing & Development,Full Stack Development,48900,Full Paid,0,Vesu,,04/08/2024
+239,Manan Inamdar,Web Designing & Development,Web Designing,18600,Full Paid,0,NA,,08/08/2024
+240,Priya Kelkar ,Front-end Development,diploma in front end development,43200,Full Paid,0,Vesu,,09/08/2024
+241,Ishan Sathaye (admission cancelled all refunded),Programming,Core Python Programming,1000,Full Paid,0,Citylight,,13/08/2024
+242,Jainam Bhide,Basic,Computer Basics & Scratch Programming (6 months),8000,Full Paid,0,Citylight,,19/08/2024
+243,Advait Vartak,Web Designing & Development,Web Designing,13600,Full Paid,0,Pal,,21/08/2024
+244,Manan Inamdar,advanced certificate course,Advanced Certificate in Python Development & Generative AI,45400,Full Paid,0,Pal,,29/08/2024
+245,Keya Talpade,Data Analysis,POWER BI,5600,Full Paid,0,Citylight,,06/09/2024
+246,Tanish Joglekar ,school course,10th std school course,10300,Full Paid,0,Citylight,,10/09/2024
+247,Riddhi Phadke,Advanced Excel,Advanced Excel (M-1 & M-2),9300,Full Paid,0,Pal,,23/09/2024
+248,Bhavya Paranjape,Programming,C & C++,12366.52,Full Paid,0.0,Pal,,29/09/2024
+249,Priya Hardikar,Basic,COMPUTER BASICS & SCRATCH PROGRAMMING,8000,Full Paid,0,Vesu,,01/10/2024
+250,Yashvi Lele,UI UX Designing,UI & UX development,41800,Full Paid,0,Vesu,,17/10/2024
+251,Devansh Limaye,Data Analysis,Data Analysis,35700,Full Paid,0,Pal,,21/10/2024
+252,Riddhi Chandorkar,school course,12th Computer Science,14100,Full Paid,0,Vesu,,22/10/2024
+253,Parth Lele,Data Analysis,Power BI,5600,Full Paid,0,Vesu,,27/10/2024
+254,advait paranjape,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,45400,Full Paid,0,Pal,,27/10/2024
+255,Jiya Sahasrabuddhe,Programming,C & C++,12400,Full Paid,0,Pal,,27/10/2024
+256,Raghav Nadkarni,Web Designing & Development,Web Designing,18600,Full Paid,0,Vesu,,30/10/2024
+257,Niyati Barhate,Programming,Advanced Python Programming (5 Modules),31500,Full Paid,0,Citylight,,08/11/2024
+258,Aarav Jamdar,UI UX Designing,UI & UX development ,41800,Full Paid,0,Citylight,,11/11/2024
+259,Tanish Nene,Programming,python programming,8500,Full Paid,0,Vesu,,13/11/2024
+260,Sanya Bhide,Graphic Designing,Adobe Photoshop,8500,Full Paid,0,Vesu,,14/11/2024
+261,Mihir Nadkarni,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI) (M-2 & M-3),10100,Full Paid,0,Vesu,,16/11/2024
+262,Krish Gokhale,Programming,Python Programming,6200,Full Paid,0,Pal,,17/11/2024
+263,Avni Paranjape,Web Designing & Development,WEB DESIGNING,13600,Full Paid,0,Pal,,18/11/2024
+264,Naisha Kelkar,school course,11th IP ,11300,Full Paid,0,Vesu,,25/11/2024
+265,Niyati Marathe,Data Analysis,Data Analysis,48900,Full Paid,0,Vesu,,28/11/2024
+266,Charvi Kirloskar,Graphic Designing,Advanced Graphic Designing (6 mths),43400,Full Paid,0,Citylight,,29/11/2024
+267,Hetvi Gokhale,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI),10100,Full Paid,0,Citylight,,30/11/2024
+268,Vansh,Programming,C & C++ (Online),16900,Full Paid,0,NA,,02/12/2024
+269,Priya Ranadive,Data Analysis,Data Analysis,48900,Full Paid,0,pal,,04/12/2024
+270,Krupa Chaphekar,Graphic Designing,Adobe Photoshop,6200,Full Paid,0,Pal,,06/12/2024
+271,Kavya Inamdar,Programming,CORE JAVA PROGRAMMING,8500,Full Paid,0,Pal,,07/12/2024
+272,Rudra Nene,advanced certificate course,Advanced Certificate in Data Analytics & Data Science,45400,Full Paid,0,Vesu,,10/12/2024
+273,PRIYA RANADIVE,Data Analysis,Business Analytics (Module 2),23000,Full Paid,0,Vesu,,21/12/2024
+274,Anish Deolekar ,Advanced Excel,Advanced Excel (M-1 & M-2),12800,Full Paid,0,Citylight,,23/12/2024
+275,Jiya Kelkar (Admission Cancelled),Advanced Excel,Advanced Excel (M-1 & M-2),0,Full Paid,0,Vesu,admission cancelled only 7000 fees received,25/12/2024
+276,Shaurya Chitnis,school course,10th std school course,7500,Full Paid,0,,,26/12/2024
+277,Vedant Wagle,school course,10TH STD SCHOOL COURSE,11000,Full Paid,0,Citylight,,08/01/2025
+278,Rachit Wadekar,Digital Marketing,Social Media Marketing (DM-2),16200,Full Paid,0,Citylight,,10/01/2025
+279,krish nene ,Accounting,Advanced Computer Accounting,13600,Full Paid,0,Vesu,,12/01/2025
+280,Aarav Ranadive,Accounting,Basic Computer Accounting,6000,Full Paid,0,Vesu,,19/01/2025
+281,Charvi Chandorkar,Accounting,Basic Computer Accounting,6000,Full Paid,0,Vesu,,19/01/2025
+282,Janvi Lele ,Accounting,Advanced Computer Accounting,13600,Full Paid,0,Vesu,,20/01/2025
+283,Sachi Jamdar,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI) ,10700,Full Paid,0,Vesu,,21/01/2025
+284,Raghav Nadkarni,Programming,Python Programming,9000,Full Paid,0,Vesu,,25/01/2025
+285,Pranav Karnik ,Programming,C Programming,7200,Full Paid,0,Citylight,,25/01/2025
+286,Devansh Bapat ,Graphic Designing,Canva,4400,Full Paid,0,Pal,,28/01/2025
+287,Mihir Nadkarni (admission Cenceled) ,Programming,Python Programming,500,Full Paid,0,Citylight,admission cancelled only 7000 fees received,02/02/2025
+288,Bhavya Deolekar,Programming,Core Java Programming,9000,Full Paid,0,Vesu,,05/02/2025
+289,Tanvi Karnik,Programming,Core Python Programming,7200,Full Paid,0,Citylight,,07/02/2025
+290,Sathaye Dhruv (admission cancelled all refunded),Programming,Python Programmig,0,Full Paid,0,Pal,,11/02/2025
+291,ANISH BHIDE,Graphic Designing,Video Editing,9000,Full Paid,0,Vesu,,11/02/2025
+292,Vedant Karnik ,Accounting,Basic Computer Accounting,6000,Full Paid,0,Vesu,,16/02/2025
+293,Gokhale Krish,Accounting,Basic Computer Accounting module 2,4400,Pending,3400,Pal,,18/02/2025
+294,Shaurya Kelkar,Graphic Designing,Canva (M-1),6000,Full Paid,0,Vesu,,25/02/2025
+295,Dandekar Manan,Basic,Computer Basics & Scratch Programming,8500,Full Paid,0,Citylight,,07/03/2025
+296,Urvi Godbole,Basic,Computer Basics,4800,Full Paid,0,Vesu,,19/03/2025
+297,Krupa Velankar,Programming,Core Java Programming,9000,Full Paid,0,Vesu,,20/03/2025
+298,Aarav Jamdar,Graphic Designing,Advanced Graphic Designing (6 mths) (with zero module),33700,Full Paid,0,Vesu,,22/03/2025
+299,Namra Yardi,Front-end Development,Diploma in Front End Development (m-1),33600,Full Paid,0,Pal,,25/03/2025
+300,Dhond Khushi,Programming,Python Programming,9000,Full Paid,0,Vesu,,05/04/2025
+301,Isha Khaparde,Graphic Designing,Graphic Designing,9900,Full Paid,0,Pal,,09/04/2025
+302,Sachi Paranjape ,school course,10th std school course (m-1),11000,Full Paid,0,NA,,12/04/2025
+303,Devansh Chaphekar,Programming,Core Java Programming,6600,Full Paid,0,Pal,,14/04/2025
+304,Tirth Tembe,Programming,Scratch Programming,6600,Full Paid,0,Pal,,15/04/2025
+305,Yashvi Lele,Combo Course,COMBO COURSE (COMPUTER BASICS & ADVANCED EXCEL WITH POWER BI),7800,Full Paid,0,Pal,,16/04/2025
+306,Pooja Inamdar,Programming,C & C++,18000,Full Paid,0,Vesu,,17/04/2025
+307,Dhruv Tembe,advanced certificate course,Advanced Certificate in Python Development & Generative AI,66200,Pending,22200,Vesu,Default,19/04/2025
+308,Subin,Advanced Excel,Advance Excel (Module 2),7200,Full Paid,0,Vesu,,27/04/2025
+309,Vihaan Wagle,Data Analysis,Business Analytics,24500,Full Paid,0,Vesu,,16/05/2025
+310,Pooja Tembe,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI),7800,Full Paid,0,Pal,,20/05/2025
+311,Rudra Ahluwalia ,Web Designing & Development,Full Stack Development,38000,Full Paid,0,citylight,,21/05/2025
+312,Priya Kelkar,school course,12th Computer Science (module 2 & 3),15000,Full Paid,0,Citylight,,25/05/2025
+313,shaurya ubhaykar,UI UX Designing,UI & UX development,44500,Full Paid,0,Vesu,,29/05/2025
+314,Nidhi Oak ,school course,11th IP module 2,12000,Pending,4700,Citylight,,30/05/2025
+315,Vansh Mhatre,Web Designing & Development,FULL STACK DEVELOPMENT,52000,Full Paid,0,Vesu,,01/06/2025
+316,Garv Dandekar,Graphic Designing,Advanced Graphic Designing (6 mths),46200,Full Paid,0,Citylight,,04/06/2025
+317,Tanish Karnik,Basic,Computer Basics & Scratch Programming,8500,Full Paid,0,Citylight,,14/06/2025
+318,Priya Chaphekar,Advanced Excel,ADVANCED EXCEL (M-1 & M-2),9900,Full Paid,0,Pal,,15/06/2025
+319,Niyati Mahabal (cancelled) ,Accounting,Basic Computer Accounting,1000,Full Paid,0,Vesu,,19/06/2025
+320,Garv Velankar,Programming,C Programming (6 months),5300,Full Paid,0,Pal,,20/06/2025
+321,Sathaye Dhruv (admission cancelled all refunded),advanced certificate course,Advanced Certificate in Python Development & Generative AI,0,Full Paid,0,Pal,,26/06/2025
+322,Vihaan Sahasrabuddhe,Programming,Core Python Programming,7200,Full Paid,0,Vesu,,30/06/2025
+323,Ananya Nadkarni,Basic,Kids Course (Module 2),5400,Full Paid,0,Vesu,,06/07/2025
+324,RACHIT HARDIKAR,Graphic Designing,Video Editing ,6600,Full Paid,0,Pal,,09/07/2025
+325,Ananya Inamdar,Programming,Scratch Programming,9000,Full Paid,0,citylight,,10/07/2025
+326,Riddhi Chandorkar ,Digital Marketing,Digital Marketing & SEO,52000,Full Paid,0,Citylight,,17/07/2025
+327,Pooja Lele ,Web Designing & Development,Web Designing,19800,Full Paid,0,Vesu,,19/07/2025
+329,Vansh,Front-end Development,Diploma in Front End Development,33600,Full Paid,0,Pal,,23/07/2025
+330,JANVI LELE,Programming,C Programming,7200,Full Paid,0,Vesu,,23/07/2025
+331,Isha Vartak,Graphic Designing,Adobe Photoshop,6600,Full Paid,0,Pal,,27/07/2025
+332,krupa ganvir,Basic,Kids Course,5400,Full Paid,0,Citylight,,31/07/2025
+333,Zeel Phadke,Web Designing & Development,full stack development,38000,Full Paid,0,Pal,,03/08/2025
+334,Samarth Gokhale,Digital Marketing,Social Media Marketing (DM-2) (M-2 & M-3),11800,Full Paid,0,Pal,,03/08/2025
+335,PRIYA GANVIR,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI),10700,Full Paid,0,citylight,,04/08/2025
+336,Shreya Kelkar,Graphic Designing,Advanced Graphic Designing (6 mths) (with zero module),46200,Full Paid,0,Citylight,,05/08/2025
+337,advait paranjape,Advanced Excel,Advanced Excel (M-1 & M-2),13600,Full Paid,0,Vesu,,07/08/2025
+338,Darsh Lele ,Graphic Designing,Video Editing,9000,Full Paid,0,Citylight,,07/08/2025
+339,Vedant Tembe,Data Analysis,Data Analysis (Online),52000,Full Paid,0,Vesu,,11/08/2025
+340,Sanya Ranadive,Data Analysis,Power BI,6000,Full Paid,0,Vesu,,12/08/2025
+341,Tirth Tembe,Digital Marketing,Digital Marketing & SEO ,38000,Pending,16700,Citylight,,14/08/2025
+342,Dhruv Yardi ,Graphic Designing,Advanced Graphic Designing (6 mths),46200,Full Paid,0,Vesu,,16/08/2025
+343,Vansh Oak,Data Analysis,Power BI,4400,Full Paid,0,Pal,,22/08/2025
+344,Urvi Mahabal ,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI),7800,Full Paid,0,Pal,,02/09/2025
+345,zeel kelkar ,Graphic Designing,Video Editing,6600,Full Paid,0,Pal,,08/09/2025
+346,Hetvi Deolekar,Graphic Designing,Video Editing,9000,Full Paid,0,Vesu,,08/09/2025
+347,Ananya Sahasrabuddhe,Programming,Scratch Programming,9000,Full Paid,0,Vesu,,16/09/2025
+348,Naisha Kelkar,Graphic Designing,Basic Graphic Designing,13600,Full Paid,0,Citylight,,19/09/2025
+349,Dhond Niyati,Basic,Computer Basics & Scratch Programming ,8500,Full Paid,0,Citylight,,22/09/2025
+350,Tanish Joglekar,school course,10th std school course,11000,Full Paid,0,Citylight,,25/09/2025
+351,Devansh Limaye,Digital Marketing,Social Media Marketing (DM-2),16200,Full Paid,0,Vesu,,25/09/2025
+352,Kavya Chandorkar,Graphic Designing,Advanced Graphic Designing (6 mths) (M-1),33700,Full Paid,0,Pal,,25/09/2025
+353,keya talpade,Digital Marketing,Digital Marketing,18000,Pending,11000,Vesu,Default,27/09/2025
+354,Advait Vartak,UI UX Designing,UI & UX development,32500,Full Paid,0,Pal,,30/09/2025
+355,Sanya Bhide,Combo Course,Combo Course (Computer Basics & Advanced Excel with Power BI) (m-1),10700,Full Paid,0,Vesu,1000 disc at last payment,10/10/2025
+356,Pooja Inamdar,Accounting,Computer Accounting,6000,Full Paid,0,NA,,17/10/2025
+357,Sahasrabuddhe Vihaan,Digital Marketing,Digital Marketing & SEO,52000,Full Paid,0,Vesu,,27/10/2025
+358,Riddhi Rege ,Graphic Designing,GRAPHIC DESIGNING,13600,Full Paid,0,Vesu,,30/10/2025
+359,Pooja Sathaye (Cancelled),Accounting,Advanced Computer Accounting,0,Full Paid,0,Vesu,2400 refunded,02/11/2025
+360,Tanvi Velankar,Programming,Advanced Python Programming (5 Modules),24500,Full Paid,0,Pal,,06/11/2025
+361,Priya Chaphekar,Graphic Designing,Adobe Photoshop,6600,Full Paid,0,Pal,,10/11/2025
+362,Rudra Ahluwalia,Programming,C & C++ ,18000,Full Paid,0,Vesu,,15/11/2025
+363,shaurya rege,Graphic Designing,Adobe Photoshop,6600,Full Paid,0,Pal,,16/11/2025
+364,Darsh Chaphekar,Advanced Excel,Advanced Excel (M-1 & M-2),9900,Full Paid,0,Pal,,18/11/2025
+365,Sanya Ranadive,Programming,Advanced Python Programming (5 Modules) (M-2 & M-3),24500,Full Paid,0,Pal,,19/11/2025
+366,Keya Mahabal,Graphic Designing,Video Editing,6600,Full Paid,0,Pal,,20/11/2025
+367,Pooja Tembe,Data Analysis,Business Analytics ,17900,Full Paid,0,Pal,,22/11/2025
+368,Radhika Bapat,Graphic Designing,Canva ,6000,Full Paid,0,Vesu,,27/11/2025
+369,rudra ahluwalia,Data Analysis,Business Analytics,24500,Full Paid,0,Vesu,,07/12/2025
+370,Shaurya Wadekar,Graphic Designing,Advanced Graphic Designing (6 mths) ,33700,Full Paid,0,Vesu,,10/12/2025
+371,Keya Talpade,Accounting,Basic Computer Accounting (module 2 & 3),4400,Full Paid,0,Pal,,13/12/2025
+372,Tanvi Velankar ,Programming,C Programming,7200,Full Paid,0,Vesu,,16/12/2025
+373,Vedant Ranadive,Web Designing & Development,Full Stack Development,52000,Full Paid,0,Citylight,,27/12/2025
+374,Dhruv Tembe,Programming,Python Programming,6600,Full Paid,0,Pal,,30/12/2025
+375,Dhruv Tembe,Graphic Designing,Video Editing,6600,Full Paid,0,Pal,,30/12/2025
+376,Mansi,Advanced Excel,Advanced Excel (M-1 & M-2),10400,Full Paid,0,pal,,02/01/2026
+377,Tirth Ganvir ,school course,10th std school course,11600,Pending,11500,Citylight,Default,06/01/2026
+378,Arnav Bapat,school course,12th Computer Science,15800,Full Paid,0,Vesu,,09/01/2026
+379,Vedant Tembe ,Graphic Designing,Video Editing,9400,Full Paid,0,Vesu,,11/01/2026
+380,niyati dhond (cancelled),Web Designing & Development,Diploma in Web Development,500,Full Paid,0,,2400 refunded,16/01/2026
+381,radhika bapat,Web Designing & Development,Full Stack Development (m-1),39900,Full Paid,0,Pal,,19/01/2026
+382,Jamdar Zeel,Advanced Excel,Advance Excel,5500,Full Paid,0,Pal,,25/01/2026
+383,Jiya Dhond (Cancelled),Advanced Excel,Advance Excel,500,Full Paid,0,,admisison cancelled fees refunded on 18/9/23,05/02/2026
+384,Pooja Lele,Accounting,Computer Accounting (6 months),6300,Full Paid,0,Vesu,,09/02/2026
+385,Aarav Ranadive,Digital Marketing,Social Media Marketing (DM-2) (with zero module),12400,Full Paid,0,Pal,,10/02/2026
+386,Tanish Karnik,Programming,C & C++ (6 months),13800,Full Paid,0,Vesu,,12/02/2026
+387,Lakshya Gokhale,school course,11th IP,12600,Pending,12500,Citylight,,12/02/2026
+388,CHARVI LIMAYE,Accounting,Basic Computer Accounting,6300,Full Paid,0,pal,,15/02/2026
+389,Namra Sahasrabuddhe,Basic,Kids Course (module 2 & 3),5700,Full Paid,0,Citylight,,19/02/2026
+390,Manan Inamdar,UI UX Designing,UI & UX DEVELOPMENT,46700,Full Paid,0,Vesu,,19/02/2026
+391,Kavya Dandekar ,Programming,PYTHON OOP,9400,Full Paid,0,Citylight,,09/03/2026
+392,Ishan Sathaye,Basic,Professional Office & Generative AI Essentials module 2,5500,Full Paid,0,Pal,,20/03/2026
+393,Jainam Bhide ,Graphic Designing,Canva module 2,5500,Full Paid,0,Pal,,29/03/2026
+394,Naisha Kelkar,advanced certificate course,Adv. Cert. in Data Analytics & Data Science,80800,Full Paid,0,Citylight,,30/03/2026
+395,Inamdar Riddhi,Digital Marketing,Ecommerce Developer & SEO Specialist Program (Online),15100,Pending,14600,Vesu,,05/04/2026
+396,Jainam Jamdar ,Advanced Excel,Advanced Excel,5500,Full Paid,0,Pal,,09/04/2026
+397,Tanish Joglekar,school course,12th computer science,15800,Full Paid,0,Vesu,,14/04/2026
+398,Riddhi Phadke ,Advanced Excel,advanced excel & power bi,15059.23,Full Paid,0.0,Citylight,,15/04/2026
+399,BHAVYA PARANJAPE,Graphic Designing,Social Media Content & Ad Architect,15100,Full Paid,0,Citylight,,18/04/2026
+400,Priya Hardikar,advanced certificate course,Agentic AI & Automation Specialist,54600,Full Paid,0,Citylight,,23/04/2026
+401,yashvi lele,Digital Marketing,Ecommerce Developer & SEO Specialist Program,11000,Full Paid,0,Pal,,01/05/2026
+402,Siddhi Ubhaykar,Graphic Designing,Advanced Graphic Designing (6 months),39900,Full Paid,0,Pal,,02/05/2026
+403,Mahek Ranadive,Data Analysis,Advanced Data Analytics,54600,Full Paid,0,Vesu,,04/05/2026
+404,Tirth Tembe ,Data Analysis,Advanced Data Analytics,39900,Pending,13300,Pal,Default,07/05/2026
+405,Tirth Tembe ,Accounting,Tally Prime with GST,4600,Full Paid,0,Pal,,20/05/2026
+406,Sahasrabuddhe Jiya ,Data Science & AI,Advanced Certificate in Data Analytics & Data Science,69500,Pending,23300,Citylight,Default,22/05/2026
+407,Raghav Nadkarni,Basic,Professional Office & Generative AI Essentials,7600,Full Paid,0,Citylight,,23/05/2026
+408,Tanish Lele ,Digital Marketing,ECOMMERCE DEVELOPER & SEO SPECIALIST PROGRAM,15100,Full Paid,0,Citylight,,25/05/2026
+409,Aarav Jamdar ,Graphic Designing,Social Media Content & Ad Architect,15100,Full Paid,0,Vesu,,04/06/2026
+410,Urvi Mahabal,Accounting,Tally Prime with GST,6300,Full Paid,0,Vesu,,04/06/2026
+411,Mihir Bapat,Basic,Computer Basics & Generative AI Foundation,6300,Pending,2100,Citylight,Default,05/06/2026
+412,Vedant Chandorkar,Data Analysis,BUSINESS ANALYTICS,19600,Full Paid,0,Pal,,08/06/2026
+413,POOJA LELE,Graphic Designing,Basic Graphic Designing,15100,Full Paid,0,Citylight,,08/06/2026
+414,KAVYA CHANDORKAR ,advanced certificate course,AI & DATA SCIENCE PROFESSIONAL,80800,Pending,27000,Vesu,Default,12/06/2026
+415,Vihaan Sahasrabuddhe,Graphic Designing,Canva,5500,Full Paid,0,Pal,,18/06/2026
+416,Niyati Marathe,Graphic Designing,Canva,7600,Full Paid,0,pal,,18/06/2026
+417,Lakshya Gokhale,Basic,Professional Office & Generative AI Essentials,7600,Full Paid,0,Vesu,,21/06/2026
+418,Hetvi Gokhale,Graphic Designing,Social Media Content & Ad Architect,15100,Full Paid,0,Vesu,,23/06/2026
+419,Niyati Marathe,Advanced Excel,Advanced Excel & Power BI,15100,Full Paid,0,Vesu,,30/06/2026
+420,Shreya Ranadive (cancelled),Accounting,Tally Prime with GST ,1700,Pending,1100,citylight,,06/07/2026
+421,Zeel Vartak,Data Science & AI,Advanced Certificate in Data Analytics & Data Science,69500,Full Paid,0,Citylight,,08/07/2026
+422,KAVYA INAMDAR,Accounting,tally prime with gst,6300,Full Paid,0,Vesu,,11/07/2026
+423,rudra nene,Advanced Excel,ADVANCED EXCEL,5500,Full Paid,0,Pal,,14/07/2026
+424,Priya Ranadive,Advanced Excel,advanced excel,7600,Full Paid,0,Citylight,,25/07/2026
+425,Anish Deolekar (admission Cenceled),Graphic Designing,Canva,0,Full Paid,0,Vesu,admisison cancelled fees refunded on 18/9/23,30/07/2026

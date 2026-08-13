@@ -1,0 +1,285 @@
+Student-ID,Student Name,Certificate Number,Certificate Issue Date,Date of Joining,Which Course,Remark
+2,Pooja Inamdar,P220404001,15/02/2023,04/04/2022,Advanced Certificate in Data Analytics & Data Science,
+4,Subin,P220414002,,14/04/2022,Advanced Python Programming (5 Modules),pending
+6,Pooja Tembe,P220404001,10/10/2022,22/04/2022,Python Programming,
+7,Vihaan Wagle,C220425004,15/02/2023,25/04/2022,Full Stack Development,
+8,Priya Kelkar,V220428005,,28/04/2022,Canva module 2,to be collected
+9,Ananya Dhond,C220503006,10/09/2022,03/05/2022,Advanced Python Programming (5 Modules) (Module 2),name as per government proof
+10,Nidhi Oak,P220510007,,10/05/2022,Business Analytics,
+11,Vansh Mhatre,V220511008,04/11/2022,11/05/2022,c & c++,
+12,Garv Dandekar,C220512009,22/09/2022,12/05/2022,Advanced Graphic Designing (6 mths),
+13,Priya Kelkar ,C220512010,25/09/2022,12/05/2022,Graphic Designing,
+14,Ananya Chandorkar,,,13/05/2022,Basic Computer Accounting module 2,
+15,Subin,,,15/05/2022,Advanced Computer Accounting,to be collected
+18,Vihaan Sahasrabuddhe,C220520013,10/09/2022,20/05/2022,Basic Computer Accounting,
+20,Krupa Chaphekar,V220523014,19/01/2023,23/05/2022,Diploma in Web Development (m-1),
+21,Ananya Inamdar,C220530015,14/12/2022,30/05/2022,C & C++,name as per government proof
+24,Vansh,P220606016,20/09/2022,06/06/2022,Advanced Python Programming (5 Modules),
+25,Nidhi Oak,P220607017,16/01/2023,07/06/2022,Canva,
+26,Isha Mhatre,C220609018,30/05/2023,09/06/2022,Advanced Certificate in Data Analytics & Data Science module 2,name as per government proof
+28,Zeel Phadke,C220613019,09/10/2022,13/06/2022,Advance Excel,
+29,Samarth Gokhale,,,14/06/2022,Advanced Excel (M-1 & M-2),to be collected
+30,Priya Ganvir,,,15/06/2022,Advanced Certificate in Data Analytics & Data Science,pending
+31,Shreya Kelkar ,V220615022,28/01/2023,15/06/2022,COMBO COURSE (COMPUTER BASICS & ADVANCED EXCEL WITH POWER BI),
+32,JAINAM JOGLEKAR,P220615023,,15/06/2022,Advanced Graphic Designing (6 mths),pending
+33,Darsh Lele,P220616024,hand written,16/06/2022,Advanced Certificate in Python Development & Generative AI,
+34,Vansh Mhatre,C220622025,25/10/2022,22/06/2022,Kids Course module 2,
+35,Jainam Joglekar,,,23/06/2022,Diploma in Front End Development,
+38,Garv Sahasrabuddhe,P220729027,12/04/2023,29/07/2022,10th std school course,name as per government proof
+39,Urvi Paranjape,P220805028,,05/08/2022,Data analysis ,to be collected
+40,Vansh Mhatre,V220812029,07/01/2023,12/08/2022,Video Editing ,
+41,Subin,P220813030,28/01/2023,13/08/2022,Basic Graphic Designing,
+42,Ananya Sahasrabuddhe,C220824031,23/01/2023,24/08/2022,Basic Graphic Designing,
+43,Kelkar Naisha ,"C220831032
+C220831033",01/03/2023,31/08/2022,Advanced Computer Accounting (module 2 & 3),
+44,Niyati Dhond,,,01/09/2022,Data Analysis,to be collected
+46,Devansh Limaye,P220912034,25/05/2023,12/09/2022,POWER BI,
+47,Chandorkar Kavya ,V220914035,06/02/2023,14/09/2022,Advanced Excel (M-1 & M-2),
+50,Advait Velankar,V221007036,19/04/2023,07/10/2022,power bi,name as per government proof
+51,Sanya Talpade,P221014037,,14/10/2022,Digital Marketing (6 months),to be collected
+53,Avni Godbole,P221020038,06/07/2023,20/10/2022,Full Stack Development module 2,
+54,RIDDHI REGE,,,22/10/2022,Kids Course,pending
+55,Pooja Sathaye,,,24/10/2022,Digital Marketing & SEO,
+56,Tanvi Ganvir,,,24/10/2022,Advanced Python Programming (5 Modules),name as per government proof
+58,Rudra Ahluwalia,C220512009,05/04/2023,12/11/2022,Basic Graphic Designing,
+59,Samarth Gokhale,C220503006,,16/11/2022,Advanced Certificate in Data Analytics & Data Science,
+60,Pooja Tembe,V221124044,09/04/2023,24/11/2022,basic computer accounting,
+61,Ranadive Sanya,V221127045,05/08/2023,27/11/2022,Full Stack Development,
+62,Keya Mahabal,C220503006,30/05/2023,01/12/2022,Core Python Programming,
+63,Pooja Inamdar,V221202047,10/06/2023,02/12/2022,diploma in front end development,
+64,Radhika Bapat ,P221204048,04/04/2023,04/12/2022,Kids Course,
+65,Dhruv Yardi,V221211049,21/06/2023,11/12/2022,Computer Accounting,
+66,Shaurya Wadekar,V221214050,07/06/2023,14/12/2022,Adobe Photoshop,
+67,Samarth Hardikar,P221217051,31/05/2023,17/12/2022,Advanced Python Programming (5 Modules),name as per government proof
+68,Isha Vartak,C221218052,14/12/2023,18/12/2022,Advanced Certificate in Python Development & Generative AI,
+69,Vedant Ranadive,V221219053,10/08/2023,19/12/2022,Digital Marketing & SEO (m-1),
+70,dhruv tembe,V220428005,28/06/2023,27/12/2022,Computer Accounting,
+72,Mansi,,,12/01/2023,Adobe Photoshop,pending
+73,Tirth Ganvir,P230114056,,14/01/2023,Advanced Python Programming (5 Modules),
+74,Arnav Limaye,C230117057,22/07/2023,17/01/2023,Basic Graphic Designing,name as per government proof
+75,Vedant Tembe,V230119058,03/07/2023,19/01/2023,Kids Course,
+76,Mihir Bapat ,,,20/01/2023,graphic designing,
+77,Darsh Chaphekar,P230125060,28/10/2023,25/01/2023,Power BI,
+78,Zeel Jamdar,V230129061,24/05/2023,29/01/2023,Core Python Programming,
+79,Chandorkar Riddhi,P230201062,03/10/2023,01/02/2023,11th IP,
+80,Tanvi Mhatre,,,02/02/2023,11TH IP,pending
+81,Darsh Ganvir,P230202064,05/11/2023,02/02/2023,Diploma in Front End Development,
+82,Tanish Karnik,V230207065,25/09/2023,07/02/2023,Business Analytics,
+83,Lakshya Gokhale,,,08/02/2023,C Programming (with zero module),to be collected
+84,Charvi Limaye ,P230215067,04/09/2023,15/02/2023,Digital Marketing (6 months),
+85,Namra Sahasrabuddhe,V230215068,11/09/2023,15/02/2023,C Programming (6 months),
+87,Kavya Dandekar,P230218069,30/04/2023,18/02/2023,Computer Basics,
+88,Ishan Sathaye,C230219070,04/09/2023,19/02/2023,Canva,
+90,Keya Kelkar ,P230227071,06/11/2023,27/02/2023,10th std school course,
+91,Riddhi Inamdar,P230306072,05/07/2023,06/03/2023,Basic Computer Accounting,
+92,Keya Mahabal,P230312073,16/07/2023,12/03/2023,Digital Marketing & SEO,
+93,Tanish Joglekar,C230315074,10/10/2023,15/03/2023,Computer Accounting,
+94,RIDDHI PHADKE,P230315075,30/12/2023,15/03/2023,Business Analytics (M-2 & M-3),
+96,Devansh Limaye,P230327076,,27/03/2023,Kids Course,pending
+97,Yashvi Deolekar,,,28/03/2023,Advanced Python Programming (5 Modules) (M-2 & M-3),pending
+98,Tanvi Mhatre,V230329078,22/11/2023,29/03/2023,Digital Marketing ,
+99,Mahek Ranadive,V230407079,,07/04/2023,Business Analytics,pending
+100,Isha Vartak,,,12/04/2023,Video Editing,
+101,Advait Paranjape,C230428081,13/10/2023,28/04/2023,Computer Basics,
+104,Raghav Nadkarni,,,30/04/2023,Basic Graphic Designing,
+105,Tanish Lele,V230501083,17/02/2024,01/05/2023,Advanced Certificate in Data Analytics & Data Science,
+106,Aarav Jamdar,P230504084,,04/05/2023,Advanced Python Programming (5 Modules),
+107,Dhruv Tembe,V230510085,08/08/2023,10/05/2023,Advance Excel ,
+108,Namra Yardi,C230518086,,18/05/2023,Advanced Python Programming (5 Modules),
+109,Vedant Chandorkar,C230523087,28/02/2024,23/05/2023,Business Analytics module 2,
+110,Jiya Sahasrabuddhe,V230525088,25/02/2024,25/05/2023,Advanced Certificate in Data Analytics & Data Science,
+111,Dhruv Tembe,V230603089,25/01/2024,03/06/2023,Diploma in Front End Development (6 months),
+112,Keya Kelkar ,C230604090,,04/06/2023,Python OOP,to be collected
+113,Jainam Bhide,V230607091,,07/06/2023,11th IP (M-2 & M-3),pending
+114,Charvi Kirloskar,C230608092,02/12/2023,08/06/2023,Scratch Programming (m-1),
+115,Hetvi Yardi,P230617093,26/11/2023,17/06/2023,Core Python Programming,name as per government proof
+116,Aditi Godbole,"V230618094
+V230618095",02/10/2023,18/06/2023,Whole Python Programming,
+118,Niyati Barhate,C230620095,,20/06/2023,Python OOP,pending
+120,Rudra Nene,,,24/06/2023,Advanced Certificate in Data Analytics & Data Science,
+121,priya ranadive,C230703097,26/01/2024,03/07/2023,C & C++,
+122,Anish Deolekar,P230717098,,17/07/2023,Data Analysis,
+124,Niyati Dhond,C230727099,03/05/2024,27/07/2023,Business Analytics ,
+125,Vedant Chaphekar,,,28/07/2023,Python OOP,to be collected
+126,Rachit Wadekar,P230731101,05/01/2024,31/07/2023,Advance Excel,
+127,Priya Ranadive,"V230802102
+V230802103",03/03/2024,02/08/2023,Graphic Designing,
+128,Aarav Limaye,V230806103,23/02/2024,06/08/2023,12th Computer Science ,name as per government proof
+130,Janvi Lele,C230820104,09/01/2024,20/08/2023,Computer Basics,
+132,Khushi Joglekar ,V230826105,11/02/2024,26/08/2023,Combo Course (Computer Basics & Advanced Excel with Power BI),
+133,Rachit Wadekar,P230826106,16/01/2024,26/08/2023,Advanced Graphic Designing (6 mths),
+134,devansh bapat,C230827107,18/12/2023,27/08/2023,Advance Excel,
+136,Tirth Ganvir,,,31/08/2023,Diploma in Front End Development,
+137,Tanvi Karnik,V230909109,29/03/2024,09/09/2023,Diploma in Front End Development,
+138,Dhruv Sathaye ,P230921110,10/04/2024,21/09/2023,Diploma in Web Development,
+140,Siddhi Khaparde,"P230926111
+P230926112",16/01/24,26/09/2023,Core Python Programming,
+141,Gokhale Krish ,P231003112,10/01/2024,03/10/2023,Core Python Programming,
+143,Namra Sahasrabuddhe,P231009113,,09/10/2023,Advance Excel,
+144,Urvi Nene,C231011114,01/09/2024,11/10/2023,Advanced Certificate in Data Analytics & Data Science,name as per government proof
+145,Velankar Krupa ,V231012115,26/02/2024,12/10/2023,Advanced Python Programming (5 Modules) (6 months),
+146,Bhavya Paranjape ,V231015116,19/04/2024,15/10/2023,Digital Marketing & SEO,
+147,Dhruv Godbole,P231016117,30/12/2023,16/10/2023,Computer Basics & Scratch Programming,
+148,Dhruv Sathaye,C231017118,02/03/2024,17/10/2023,Advanced Computer Accounting (Module 2),
+152,Tirth Tembe,V231026119,20/03/2024,26/10/2023,Digital Marketing,
+153,Ananya Chandorkar,C231028120,25/03/2024,28/10/2023,Computer Accounting,
+155,Ananya Chandorkar,C231108121,20/03/2024,08/11/2023,Advanced Python Programming (5 Modules),
+156,Subin,C231109122,-,09/11/2023,Combo Course (Computer Basics & Advanced Excel with Power BI),
+157,vihaan wagle ,P231112123,26/03/2024,12/11/2023,Advance Excel,
+158,pooja tembe ,C231116124,,16/11/2023,UI & UX development,pending
+160,jainam deolekar,P231117125,04/06/2024,17/11/2023,12th Computer Science (with zero module),
+161,Zeel Ranadive,,,17/11/2023,Computer Accounting,pending
+162,Shaurya Ubhaykar ,P231118127,01/04/2024,18/11/2023,Computer Accounting,
+163,Charvi Limaye,V231120128,31/03/2024,20/11/2023,Social Media Marketing (DM-2) (m-1),
+166,Devansh Wadekar,P231129129,20/08/2024,29/11/2023,Full Stack Development,
+168,Krupa Ganvir,P231130130,,30/11/2023,UI & UX development ,pending
+169,URVI GODBOLE,,,30/11/2023,Social Media Marketing (DM-2),
+170,Dhruv Sathaye,V231202132,29/08/2024,02/12/2023,Diploma in Front End Development,
+171,advait paranjape ,,,08/12/2023,Diploma in Web Development,pending
+172,Divya Kalelkar,C231208134,15/05/24,08/12/2023,Kids Course,
+173,Rachit Hardikar,V231211135,28/07/2024,11/12/2023,Advanced Graphic Designing (6 mths) (6 months),
+175,Riddhi Chandorkar,V231223136,09/05/2024,23/12/2023,Adobe Photoshop (6 months),
+176,Pooja Lele ,V231223137,19/06/2024,23/12/2023,Scratch Programming,
+178,Tanvi Mhatre,P240110138,,10/01/2024,Digital Marketing,
+179,Isha Vartak,P240112139,23/07/2024,12/01/2024,Social Media Marketing (DM-2),
+180,Zeel Phadke,,,12/01/2024,Basic Computer Accounting,pending
+181,zeel phadke ,P240116141,20/05/2024,16/01/2024,Advanced Graphic Designing (6 mths) (M-1),
+182,Vedant Chandorkar,V240123142,24/06/2024,23/01/2024,Canva,
+183,Priya Ganvir,C240124143,29/12/2024,24/01/2024,Advanced Certificate in Python Development & Generative AI,
+184,Shreya Kelkar ,C240130144,24/09/2024,30/01/2024,Diploma in Front End Development,
+185,Priya Kelkar,V240204145,,04/02/2024,Scratch Programming,to be collected
+186,Darsh Lele,P240207146,,07/02/2024,10th std school course,pending
+187,Nidhi Khaparde,,,09/02/2024,Social Media Marketing (DM-2) (M-1),name as per government proof
+188,Pranav Ranadive,V240210148,15/09/2024,10/02/2024,Business Analytics,name as per government proof
+189,Niyati Barhate,P240210149,06/07/2024,10/02/2024,Digital Marketing (6 months),
+190,Dhruv Sathaye,V240217150,31/10/2024,17/02/2024,Diploma in Front End Development,name as per government proof
+192,Urvi Mahabal,C240223151,,23/02/2024,Graphic Designing ,
+193,Kavya Chandorkar ,P240301152,03/12/2024,01/03/2024,UI & UX development,
+194,Hetvi Deolekar,C240303153,,03/03/2024,Computer Accounting,
+196,Naisha Kelkar,P240309154,,09/03/2024,Python OOP,
+199,Devansh Limaye,,,22/03/2024,C Programming,
+200,Kavya Chandorkar,V240322156,,22/03/2024,COMPUTER BASICS & SCRATCH PROGRAMMING,pending
+201,Keya Talpade,C240329157,30/07/24,29/03/2024,computer basics,
+204,ananya nadkarni,C240405158,02/09/2024,05/04/2024,Computer Accounting ,
+205,Avni Godbole ,"C240410159
+C240410160",06/11/2024,10/04/2024,Web Designing,
+206,Darsh Lele,C240411160,,11/04/2024,Basic Graphic Designing (Online),
+207,Namra Yardi ,P240415161,18/10/2024,15/04/2024,12th Computer Science (6 months),
+208,Tanvi Wadekar,C240507162,31/08/2024,07/05/2024,Computer Accounting,name as per government proof
+212,Kelkar Keya,C240520163,27/08/2024,20/05/2024,C Programming,
+213,Anish Bhide,V240529164,17/09/2024,29/05/2024,Computer Accounting,
+217,Keya Kelkar,V240612165,28/12/2024,12/06/2024,Advanced Graphic Designing (6 mths),
+218,Shaurya Wadekar,V240613166,08/10/2024,13/06/2024,Core Python Programming,
+219,Devansh Limaye,P240616167,,16/06/2024,Combo Course (Computer Basics & Advanced Excel with Power BI),pending
+220,Anish Bhide,P240616168,13/12/2024,16/06/2024,Advanced Excel (M-1 & M-2),
+223,dhruv tembe,C240619169,22/01/2025,19/06/2024,Social Media Marketing (DM-2),
+224,NAMRA SAHASRABUDDHE,P240626170,13/01/2025,26/06/2024,Basic Computer Accounting,
+226,Bapat Arnav,C240630171,,30/06/2024,Video Editing,to be collected
+230,Zeel Jamdar ,C240709172,16/11/2024,09/07/2024,Digital Marketing,
+232,Tanvi Mhatre,C240714173,02/10/2024,14/07/2024,Advanced Excel (M-1 & M-2),
+233,Samarth Gokhale,C240719174,25/01/2025,19/07/2024,Social Media Marketing (DM-2),
+235,Lakshya Gokhale ,C240722175,23/03/2025,22/07/2024,Data Analysis,
+237,Limaye Charvi,V240728176,13/01/2025,28/07/2024,Adobe Photoshop,
+242,Jainam Bhide,C240819177,03/11/2024,19/08/2024,Computer Basics & Scratch Programming (6 months),
+243,Advait Vartak,P240821178,08/06/2025,21/08/2024,Web Designing,
+244,Manan Inamdar,P240829179,07/08/2025,29/08/2024,Advanced Certificate in Python Development & Generative AI,
+245,Keya Talpade,C240906180,,06/09/2024,POWER BI,to be collected
+246,Tanish Joglekar ,C240910181,30/04/2025,10/09/2024,10th std school course,
+247,Riddhi Phadke,P240923182,13/01/2025,23/09/2024,Advanced Excel (M-1 & M-2),
+248,Bhavya Paranjape ,,,29/09/2024,C & C++,pending
+249,Priya Sathaye,,,01/10/2024,COMPUTER BASICS & SCRATCH PROGRAMMING,to be collected
+251,Devansh Limaye,P241021185,,21/10/2024,Data Analysis,
+256,Raghav Nadkarni ,,,30/10/2024,Web Designing,to be collected
+257,Niyati Barhate,C241108187,20/02/2025,08/11/2024,Advanced Python Programming (5 Modules),
+260,Sanya Bhide,"V241114188
+V241114189",12/07/2025,14/11/2024,Adobe Photoshop,
+261,Mihir Ahluwalia,"V241116189
+V241116190",01/06/2025,16/11/2024,Combo Course (Computer Basics & Advanced Excel with Power BI) (M-2 & M-3),name as per government proof
+262,Gokhale Krish,P241117190,,17/11/2024,Python Programming,pending
+263,Avni Paranjape,,,18/11/2024,WEB DESIGNING,
+265,Niyati Kirloskar,V241128192,,28/11/2024,Data Analysis,name as per government proof
+267,Hetvi Gokhale,C241130193,06/05/2025,30/11/2024,Combo Course (Computer Basics & Advanced Excel with Power BI),
+268,Vansh,C241202194,,02/12/2024,C & C++ (Online),
+271,Kavya Inamdar,C241207195,,07/12/2024,CORE JAVA PROGRAMMING,
+272,Rudra Nene,P241210196,16/12/2025,10/12/2024,Advanced Certificate in Data Analytics & Data Science,
+273,Ranadive Priya,V241221197,22/08/2025,21/12/2024,Business Analytics (Module 2),
+276,Shaurya Chitnis,P241226198,,26/12/2024,10th std school course,pending
+278,Rachit Wadekar,C250110199,21/05/2025,10/01/2025,Social Media Marketing (DM-2),
+279,Krish Nene,V250112200,,12/01/2025,Advanced Computer Accounting,pending
+280,Aarav Ranadive,,,19/01/2025,Basic Computer Accounting,pending
+282,Janvi Lele,,,20/01/2025,Advanced Computer Accounting,
+283,Sachi Jamdar ,,,21/01/2025,Combo Course (Computer Basics & Advanced Excel with Power BI) ,pending
+284,Raghav Nadkarni,,,25/01/2025,Python Programming,to be collected
+285,Pranav Karnik,C250125205,21/08/2025,25/01/2025,C Programming,
+286,devansh bapat,,,28/01/2025,Canva,
+291,Anish Bhide,,,11/02/2025,Video Editing,to be collected
+292,Vedant Karnik,V250216208,15/06/2025,16/02/2025,Basic Computer Accounting,
+294,Shaurya Kelkar,V250225209,,25/02/2025,Canva (M-1),to be collected
+295,Manan Dandekar,C250307210,28/05/2025,07/03/2025,Computer Basics & Scratch Programming,
+296,Urvi Godbole,V250319211,22/07/2025,19/03/2025,Computer Basics,
+297,krupa velankar ,V250320212,02/08/2025,20/03/2025,Core Java Programming,
+298,Aarav Jamdar,P250322213,15/08/2025,22/03/2025,Advanced Graphic Designing (6 mths) (with zero module),
+299,Namra Yardi,P250325214,07/01/2026,25/03/2025,Diploma in Front End Development (m-1),
+300,Khushi Dhond ,V250405215,,05/04/2025,Python Programming,pending
+301,Isha Khaparde ,P250409216,11/09/2025,09/04/2025,Graphic Designing,
+303,DEVANSH CHAPHEKAR,P250414217,24/09/25,14/04/2025,Core Java Programming,
+304,tirth tembe ,P250415218,19/07/2025,15/04/2025,Scratch Programming,
+306,Pooja Inamdar,V250417219,25/09/2025,17/04/2025,C & C++,
+307,Dhruv Tembe,V250419220,28/02/2026,19/04/2025,Advanced Certificate in Python Development & Generative AI,
+308,Subin ,,,27/04/2025,Advance Excel (Module 2),to be collected
+310,Pooja Tembe,P250520222,03/11/2025,20/05/2025,Combo Course (Computer Basics & Advanced Excel with Power BI),
+311,Rudra Ahluwalia,P250521223,01/12/2025,21/05/2025,Full Stack Development,
+312,Priya Kelkar,C250525224,08/03/2026,25/05/2025,12th Computer Science (module 2 & 3),
+314,Nidhi Oak,C250530225,03/12/2025,30/05/2025,11th IP module 2,
+315,Vansh Dhond,V250601226,27/01/2026,01/06/2025,FULL STACK DEVELOPMENT,name as per government proof
+317,Tanish Karnik,C250614227,14/11/2025,14/06/2025,Computer Basics & Scratch Programming,
+318,Priya Chaphekar ,,,15/06/2025,ADVANCED EXCEL (M-1 & M-2),
+320,Garv Velankar ,P250620229,21/11/2025,20/06/2025,C Programming (6 months),
+322,Vihaan Sahasrabuddhe,V250630230,10/01/2026,30/06/2025,Core Python Programming,
+323,Ananya Nadkarni,V250706231,22/11/2025,06/07/2025,Kids Course (Module 2),
+325,Ananya Inamdar,V250710232,25/12/2025,10/07/2025,Scratch Programming,
+326,Riddhi Chandorkar,C250717233,09/03/2026,17/07/2025,Digital Marketing & SEO,
+329,VANSH,P250723234,26/02/2026,23/07/2025,Diploma in Front End Development,
+330,JANVI LELE,V250723235,02/01/2026,23/07/2025,C Programming,
+332,Krupa Ganvir ,C250731236,31/12/2025,31/07/2025,Kids Course,
+333,Zeel Phadke,P250803237,05/02/2026,03/08/2025,full stack development,
+336,Shreya Kelkar ,C250805238,21/03/2026,05/08/2025,Advanced Graphic Designing (6 mths) (with zero module),
+337,Advait Paranjape ,V250807239,08/01/2026,07/08/2025,Advanced Excel (M-1 & M-2),
+338,Darsh Lele,C250807240,24/02/2026,07/08/2025,Video Editing,
+339,Vedant Tembe,V250811241,03/05/2026,11/08/2025,Data Analysis (Online),
+340,Sanya Ranadive ,V250812242,20/02/2026,12/08/2025,Power BI,
+341,Tirth Tembe,P250814243,27/01/2026,14/08/2025,Digital Marketing & SEO ,
+342,Dhruv Yardi,V250816244,,16/08/2025,Advanced Graphic Designing (6 mths),
+343,VANSH OAK,P250822245,05/03/2026,22/08/2025,Power BI,
+344,Urvi Limaye,P250902246,19/03/2026,02/09/2025,Combo Course (Computer Basics & Advanced Excel with Power BI),name as per government proof
+346,Hetvi Deolekar,C250908247,26/03/2026,08/09/2025,Video Editing,
+347,Ananya Sahasrabuddhe,V250916248,22/01/2026,16/09/2025,Scratch Programming,
+348,NAISHA KELKAR,C250919249,24/01/2026,19/09/2025,Basic Graphic Designing,
+350,Tanish Joglekar ,C250925250,08/06/2026,25/09/2025,10th std school course,
+352,Kavya Sahasrabuddhe,P250925251,14/05/2026,25/09/2025,Advanced Graphic Designing (6 mths) (M-1),name as per government proof
+353,Keya Talpade,V250927252,,27/09/2025,Digital Marketing,
+354,Advait Vartak,P250930253,,30/09/2025,UI & UX development,
+356,Pooja Inamdar,,,17/10/2025,Computer Accounting,
+357,Vihaan Sahasrabuddhe ,"V251027255
+V251027256",06/04/2026,27/10/2025,Digital Marketing & SEO,
+358,Riddhi Rege,V251030256,15/05/2026,30/10/2025,GRAPHIC DESIGNING,
+360,Tanvi Velankar,P251106257,04/05/2026,06/11/2025,Advanced Python Programming (5 Modules),
+361,Priya Chaphekar,P251110258,10/04/2026,10/11/2025,Adobe Photoshop,
+362,Rudra Ahluwalia ,V251115259,29/05/2026,15/11/2025,C & C++ ,
+364,Darsh Chaphekar,P251118260,16/05/2026,18/11/2025,Advanced Excel (M-1 & M-2),
+365,Sanya Ranadive,P251119261,19/04/2026,19/11/2025,Advanced Python Programming (5 Modules) (M-2 & M-3),
+367,Pooja Tembe,P251122262,,22/11/2025,Business Analytics ,pending
+368,Radhika Bapat,V251127263,,27/11/2025,Canva ,pending
+372,Tanvi Velankar,V251216264,19/06/2026,16/12/2025,C Programming,
+374,Dhruv Tembe,P251230265,30/05/26,30/12/2025,Python Programming,
+376,mansi,P260102266,,02/01/2026,Advanced Excel (M-1 & M-2),pending
+377,tirth ganvir ,C260106267,,06/01/2026,10th std school course,to be collected
+378,Arnav Bapat,,,09/01/2026,12th Computer Science,
+379,Vedant Tembe,V260111269,,11/01/2026,Video Editing,
+386,Tanish Wagle,,,12/02/2026,C & C++ (6 months),to be collected
+388,Charvi Limaye,V260215271,,15/02/2026,Basic Computer Accounting,pending
+391,Kavya Dandekar,C260309272,,09/03/2026,PYTHON OOP,
+392,ishan sathaye,P260320273,01/07/2026,20/03/2026,Professional Office & Generative AI Essentials module 2,
+393,Jainam Bhide,P260329274,,29/03/2026,Canva module 2,to be collected
+407,raghav nadkarni,,,23/05/2026,Professional Office & Generative AI Essentials,pending
+411,Mihir Bapat,,,05/06/2026,Computer Basics & Generative AI Foundation,pending

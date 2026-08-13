@@ -716,6 +716,16 @@ def test_report_phone_leak_detection() -> None:
     assert not _contains_mobile('{"data":[1704067200000, 1706745600000]}')
     assert not _contains_mobile("total 12000 pincode 395007 on 2025-01-10")
 
+    # A signed decimal in a chart's aria-label. Eleven digits and a "." read as
+    # a formatted phone under the separator rule, and withheld an entire report
+    # over a driver label — a false positive that costs the whole deliverable.
+    assert not _contains_mobile("Drivers: python programming -279345.8333")
+    assert not _contains_mobile("citylight -175664.3333.")   # sentence-final dot
+    assert not _contains_mobile("value 1523456.7890 rupees")
+    # And the guard still holds where it matters.
+    assert _contains_mobile("(079) 2345-6789")
+    assert _contains_mobile("call 7990219667 now")
+
 
 def test_prediction_blocks_thin_labels() -> None:
     # Honesty gate: too few terminal labels -> blocked, no model invented.
@@ -915,6 +925,723 @@ def test_problem_definition_metric_routing() -> None:
             continue  # review metrics have no Analyst spec yet (honest skip)
         for m in spec["metrics"]:
             assert m in METRIC_SPECS, f"{mod}: {m} not computable by Analyst"
+
+
+# --------------------------------------------------------- keys and loading
+
+def test_repeated_id_is_not_treated_as_a_row_key() -> None:
+    """Receipt books restart per branch, so receipt ids repeat across rows.
+
+    Keying on the id alone silently deleted a third of the admission sheet and
+    over half the fee ledger — including one half of every split payment.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    # Two students share receipt number 145 (different branch books); one
+    # payment of 3000 was split cash/online across two rows of receipt 200.
+    df = pd.DataFrame({
+        "Receipt-id": ["145", "145", "200", "200", "201"],
+        "Name": ["asha", "bimal", "chetan", "chetan", "divya"],
+        "date of receipt": ["01/02/2025", "14/07/2025", "03/03/2025",
+                            "03/03/2025", "04/03/2025"],
+        "paid amt": [2000, 1500, 1200, 1800, 900],
+        "Mode of Payment": ["Cash", "Cash", "Cash", "Online", "Cash"],
+    })
+    roles = {"receipt_id": "Receipt-id", "name": "Name",
+             "receipt_date": "date of receipt", "paid": "paid amt",
+             "payment_mode": "Mode of Payment"}
+    issues: list = []
+    keys = agent._dedupe(df, roles, issues)
+    assert len(df) == 5, f"lost {5 - len(df)} genuine row(s) to dedupe"
+    assert keys != ["Receipt-id"], "id alone must not be accepted as the key"
+    assert any("not a row key" in i for i in issues), issues
+
+    # A genuinely unique id is still used directly — the widening only fires
+    # when the measurement says it has to.
+    unique = pd.DataFrame({"Receipt-id": ["1", "2", "3"],
+                           "Name": ["a", "b", "c"]})
+    assert agent._dedupe(unique, {"receipt_id": "Receipt-id", "name": "Name"},
+                         []) == ["Receipt-id"]
+
+
+def test_rows_wider_than_header_do_not_shift(tmp_name="ragged.csv") -> None:
+    """A trailing delimiter makes pandas index-shift every column silently.
+
+    Left unguarded the dates land in the name column, no row has a parseable
+    date, and the cleaner blocks having dropped 100% of rows.
+    """
+    import os
+    import tempfile
+
+    agent = DataEngineerAgent(output_dir="output")
+    path = os.path.join(tempfile.mkdtemp(prefix="fv-ragged-"), tmp_name)
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write("Timestamp,Student Name,Preferred Branch\n")
+        for i in range(1, 13):                     # trailing comma on each row
+            fh.write(f"{i:02d}/03/2025 10:{i:02d}:00,Student {i},Vesu,\n")
+
+    result = agent.run({"question": "admissions by branch"}, path)
+    assert result["status"] == "ready", result.get("message")
+    assert result["row_count"] == 12, result["row_count"]
+    issues = result["quality_report"]["known_issues"]
+    assert any("wider than the header" in i for i in issues), issues
+
+
+def test_person_grain_withheld_without_a_discriminator() -> None:
+    """A name is not an identity. `fees-data` carries no phone, DOB or email.
+
+    Measured on the real-shaped sample: a name-only key merged 219 people into
+    166 and inflated the repeat-enrollment count by 20%, reported as fact.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+
+    # Two different Khiren Jains, plus one real re-admission by the first.
+    fees_like = pd.DataFrame({
+        "Name": ["khiren jain", "khiren jain", "khiren jain", "asha patel"],
+        "Total Fees": [12000, 9000, 15000, 8000],
+    })
+    issues: list = []
+    basis = agent._derive_person_id(fees_like, {"name": "Name"}, issues)
+    assert basis == ["name"], basis
+    assert "is_repeat_enrollment" not in fees_like.columns, (
+        "repeat flag must be withheld when namesakes cannot be separated")
+    assert any("name-only" in i for i in issues), issues
+
+    # Same names, but phones now separate the two humans -> the flag returns
+    # and marks only the person who genuinely enrolled twice.
+    with_phone = pd.DataFrame({
+        "Name": ["khiren jain", "khiren jain", "khiren jain", "asha patel"],
+        "Mobile No (Student)": ["9990001111", "9990001111", "9990002222",
+                                "9990003333"],
+    })
+    basis = agent._derive_person_id(
+        with_phone, {"name": "Name", "student_mobile": "Mobile No (Student)"}, [])
+    assert basis == ["name", "student_mobile"], basis
+    assert list(with_phone["is_repeat_enrollment"]) == [True, True, False, False]
+
+    # A sparse discriminator is refused: keying on a 25%-populated phone
+    # column would split one person into "with phone" and "without".
+    sparse = pd.DataFrame({
+        "Name": ["asha patel"] * 4,
+        "Mobile No (Student)": ["9990001111", "", "", ""],
+    })
+    issues = []
+    basis = agent._derive_person_id(
+        sparse, {"name": "Name", "student_mobile": "Mobile No (Student)"}, issues)
+    assert basis == ["name"], basis
+    assert any("25%" in i for i in issues), issues
+
+
+# ----------------------------------------------------- canonical field names
+
+def test_counsellor_never_wins_the_student_name_role() -> None:
+    """Enquiry Form Responses 2 has no student name — only a counsellor's.
+
+    With no `counsellor` role it won `name`, so person identity was built from
+    the counsellor plus the student's phone: "4 repeat enrollments" was one
+    counsellor handling four enquiries.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({"Counsellor Name ": ["mansi", "mansi"],
+                       "Mobile No (Student)": ["9990001111", "9990002222"],
+                       "Date of Enquiry": ["01/03/2025", "02/03/2025"]})
+    roles = agent._detect_roles(df)
+    assert roles.get("counsellor") == "Counsellor Name "
+    assert "name" not in roles, f"counsellor claimed the name role: {roles}"
+
+    # A real student name still wins, and the counsellor keeps its own role.
+    both = pd.DataFrame({"Student Name": ["asha"], "Counsellor Name": ["mansi"]})
+    roles = agent._detect_roles(both)
+    assert roles["name"] == "Student Name"
+    assert roles["counsellor"] == "Counsellor Name"
+
+
+def test_staff_hired_from_the_student_body_are_flagged_not_merged() -> None:
+    """The institute promotes its own students to faculty and counsellor.
+
+    So one human is a student row and a tutor cell on the same sheet. That is
+    neither a duplicate to collapse nor, if they stop attending, a churn — but
+    it may equally be a namesake, so it is flagged and left alone.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Student Name": ["Advait Vartak", "Bimal Shah", "Asha Patel"],
+        # The honorific only ever appears on the staff side.
+        "Faculty": ["Yash Kanodia Sir", "Advait Vartak Sir", "Mansi Mam"],
+    })
+    issues: list = []
+    agent._derive_staff_alumni(
+        df, {"name": "Student Name", "faculty": "Faculty"}, issues)
+
+    assert list(df["is_staff_alumni"]) == [True, False, False]
+    assert any("namesake" in i for i in issues), issues
+    # Advisory only: the student row keeps its own identity.
+    assert len(df) == 3
+
+    # No collision -> no column, so nothing downstream has to handle an
+    # all-False flag that means "we checked" rather than "no staff here".
+    clean = pd.DataFrame({"Student Name": ["Asha Patel"],
+                          "Faculty": ["Mansi Mam"]})
+    agent._derive_staff_alumni(
+        clean, {"name": "Student Name", "faculty": "Faculty"}, [])
+    assert "is_staff_alumni" not in clean.columns
+
+
+def _timetable_workbook(tmp: str) -> list:
+    """Four tab CSVs shaped like the institute's timetable workbook.
+
+    Deliberately faithful in two ways that matter: no `student-id` (the tabs
+    have none), and most rows have no `Timestamp` (only form-created rows do).
+    """
+    import os
+
+    tabs = {
+        "main_data": [("Ava Lin", "5550100", "python programming", "")],
+        "not_coming": [
+            ("Ben Rao", "5550101", "python programming", "fees"),
+            ("Cara Das", "5550102", "advanced excel", "shifted city"),
+        ],
+        "not_to_entertain": [("Dev Iyer", "5550103", "advanced excel", "rude")],
+        "course_completed": [
+            ("Eli Mistry", "5550104", "python programming", ""),
+            # Also sitting in main_data below — a copy, not a move.
+            ("Ava Lin", "5550100", "python programming", ""),
+        ],
+    }
+    paths = []
+    for tab, rows in tabs.items():
+        df = pd.DataFrame(rows, columns=[
+            "Student Name", "Mobile No (Student)", "Which Course", "Status & reason",
+        ])
+        df.insert(0, "Timestamp", None)          # the real tabs are mostly blank here
+        path = os.path.join(tmp, f"student_timetable__{tab}.csv")
+        df.to_csv(path, index=False)
+        paths.append({"name": f"student_timetable__{tab}", "path_or_query": path})
+    return paths
+
+
+def test_lifecycle_tabs_are_unioned_not_joined() -> None:
+    """The four timetable tabs are one roster split by membership.
+
+    Joining them keeps only the master tab's rows: on the real workbook that
+    was 16 rows out of 406, every one `active`, deleting every completion and
+    every churn. They have to be stacked.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = DataEngineerAgent(output_dir=tmp)
+        pkg = agent.run_sources({"question": "churn"}, _timetable_workbook(tmp))
+
+        assert pkg["status"] == "ready"
+        df = pd.read_parquet(pkg["canonical_df_path"])
+        counts = df["completion_status"].value_counts().to_dict()
+        # 6 rows in, 1 removed as a contradiction (Ava is both active and
+        # completed), so 5 out — not 1.
+        assert len(df) == 5, counts
+        assert counts == {"completed": 2, "not_coming": 2, "not_to_entertain": 1}
+
+        note = next(i for i in pkg["quality_report"]["known_issues"] if "Unioned" in i)
+        assert "4 lifecycle partition" in note
+
+        # The contradiction is resolved to the most advanced label and flagged.
+        assert int(df["lifecycle_conflict"].sum()) == 1
+        conflict = next(i for i in pkg["quality_report"]["known_issues"]
+                        if "contradicting" in i)
+        assert "completed > not_to_entertain > not_coming > active" in conflict
+
+
+def test_membership_rows_survive_without_a_date() -> None:
+    """On a lifecycle tab the fact is the row's presence, not when it was typed.
+
+    158 of 277 real completions carry no Timestamp. Dropping them deleted 57%
+    of the completions and then tripped the drop-fraction guard, blocking the
+    sheet outright.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        agent = DataEngineerAgent(output_dir=tmp)
+        sources = _timetable_workbook(tmp)
+        pkg = agent.run_sources({"question": "churn"}, sources)
+
+        # Every source stayed usable; none was blocked for missing dates.
+        assert not [i for i in pkg["quality_report"]["known_issues"]
+                    if "Row count dropped" in i]
+        reasons = pkg["source_packages"][0]["quality_report"]["dropped_reasons"]
+        assert "missing_primary_date" not in reasons
+
+        # A frame with mixed lifecycle labels is a roster, not a tab, and the
+        # date rule still applies to it.
+        mixed = pd.DataFrame({
+            "Student Name": ["a", "b"],
+            "completion_status": ["active", "completed"],
+            "event_date": pd.to_datetime([None, "2025-01-01"]),
+        })
+        kept, dropped = agent._drop_invalid_rows(mixed, {})
+        assert len(kept) == 1 and dropped["missing_primary_date"] == 1
+
+
+def test_lifecycle_roster_joins_to_the_student_master_by_person() -> None:
+    """The tabs carry no student-id, so identity is the only link.
+
+    Without this join the roster is left unjoined and churn is uncomputable:
+    the lifecycle label is on the timetable sheet and the course start on the
+    student sheet.
+    """
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        master = pd.DataFrame({
+            "student-id": [1, 2, 3, 4],
+            "Student Name": ["Ava Lin", "Ben Rao", "Cara Das", "Zoe Puri"],
+            "Mobile No (Student)": ["5550100", "5550101", "5550102", "5550109"],
+            "Date of Joining": ["01/02/2025", "01/02/2025", "01/02/2025", "01/02/2025"],
+            "Which Course": ["python programming", "python programming",
+                             "advanced excel", "advanced excel"],
+            "Course Duration (IN DAYS)": [90, 90, 90, 90],
+        })
+        master_path = os.path.join(tmp, "student_data_sheet__student_data.csv")
+        master.to_csv(master_path, index=False)
+
+        sources = _timetable_workbook(tmp)
+        sources.append({"name": "student_data_sheet__student_data",
+                        "path_or_query": master_path})
+
+        agent = DataEngineerAgent(output_dir=tmp, churn_config={"as_of": "2026-06-01"})
+        pkg = agent.run_sources({"question": "churn"}, sources)
+
+        rel = pkg["relationship_summary"]
+        assert "student_timetable_all_tabs" in rel["joined_sources"], rel
+        accepted = next(d for d in rel["accepted"]
+                        if d["right_source"] == "student_timetable_all_tabs")
+        assert accepted["match_method"] == "person_course"
+
+        # The master keeps its grain — a join that multiplies rows is rejected.
+        assert pkg["row_count"] == 4
+
+        df = pd.read_parquet(pkg["canonical_df_path"])
+        by_name = dict(zip(df["student-id"], df["churn_status"]))
+        # Course ends 2025-04-02; grace to 2025-10-02; as_of 2026-06-01.
+        assert by_name[2] == "churned"          # Ben, in Not_Coming
+        assert by_name[3] == "churned"          # Cara, in Not_Coming
+        assert by_name[1] == "completed"        # Ava, contradiction resolved up
+        assert by_name[4] == "no_membership"    # Zoe is in no tab at all
+
+        summary = pkg["churn_summary"]
+        assert summary["as_of"].startswith("2026-06-01")
+        assert summary["churn_rate_of_at_risk"] == 1.0
+        assert summary["counts"]["no_membership"] == 1
+
+
+def test_a_course_upgrade_recorded_on_one_sheet_still_matches() -> None:
+    """Confirmed by the institute: students upgrade course and one sheet lags.
+
+    Then one enrollment wears two course names and a person+course join misses
+    it, losing a lifecycle label that really does belong to that row. Repaired
+    only where it cannot be anything else.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    left = pd.DataFrame({
+        "person_id": ["p1", "p2", "p2"],
+        "course": ["advanced excel", "python programming", "graphic designing"],
+        "__k": [None] * 3,
+    })
+    right = pd.DataFrame({
+        "person_id": ["p1", "p2", "p2"],
+        "course": ["power bi", "java programming", "web designing"],
+        "__k": [None] * 3,
+    })
+    for frame in (left, right):
+        frame["__k"] = agent._composite_key(frame, ["person_id", "course"])
+
+    moved = agent._rekey_course_upgrades(left, right, "__k")
+    # p1 has exactly one unmatched row on each side -> unambiguous, re-keyed.
+    assert moved == 1
+    assert right.loc[0, "__k"] == left.loc[0, "__k"]
+    # p2 has two on each side: which pairs with which is a guess, so neither
+    # moves. Two real enrollments look identical to one renamed enrollment.
+    assert right.loc[1, "__k"] != left.loc[1, "__k"]
+    assert right.loc[2, "__k"] != left.loc[2, "__k"]
+
+
+def test_mutable_attributes_stay_out_of_join_keys() -> None:
+    """Branch, faculty and batch timing change mid-course; the sheet overwrites.
+
+    A join keyed on one of them fails precisely on the students who moved —
+    the population a retention report is about.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    # One repeat student, so the single-column name match cannot be used and
+    # the composite key is what decides.
+    left = pd.DataFrame({
+        "Student Name": ["ava", "ava"],
+        "Which Course": ["advanced excel", "python programming"],
+        "Date of Admission": pd.to_datetime(["2025-01-01", "2025-02-01"]),
+        "Branch": ["vesu", "pal"],
+    })
+    right = pd.DataFrame({
+        "Student Name": ["ava", "ava"],
+        "Which Course": ["advanced excel", "python programming"],
+        "Date of Admission": pd.to_datetime(["2025-01-01", "2025-02-01"]),
+        # Ava transferred to Pal mid-course; only this sheet was updated.
+        "Branch": ["pal", "pal"],
+        "Receipt ID": [11, 12],
+    })
+    roles = {"name": "Student Name", "course": "Which Course",
+             "admission_date": "Date of Admission", "branch": "Branch"}
+
+    merged, detail = agent._join_admission_identity(
+        left, right, roles, roles, "fees", None
+    )
+    assert detail["status"] == "accepted"
+    # The immutable date is preferred over the mutable branch...
+    assert detail["match_method"] == "name_course_admission_date"
+    # ...so the student who moved branch still matches.
+    assert list(merged["fees__Receipt ID"]) == [11, 12]
+
+    # With no date anywhere, branch is the last resort — and this is exactly
+    # what it costs: the transferred row finds nothing.
+    no_date = {k: v for k, v in roles.items() if k != "admission_date"}
+    fell_back, fallback = agent._join_admission_identity(
+        left.drop(columns=["Date of Admission"]),
+        right.drop(columns=["Date of Admission"]),
+        no_date, no_date, "fees", None,
+    )
+    assert fallback["match_method"] == "name_course_branch"
+    assert "change" in fallback["caveat"]
+    assert fallback["left_unmatched"] == 1
+    assert pd.isna(fell_back["fees__Receipt ID"].iloc[0])
+
+    # And the caveat is stated on any source carrying one of them.
+    issues: list = []
+    agent._flag_mutable_attributes(left, roles, issues)
+    assert "as-of snapshot" in issues[0]
+    agent._flag_mutable_attributes(left, {"name": "Student Name"}, issues)
+    assert len(issues) == 1, "no mutable role present, so nothing to warn about"
+
+
+def test_attribute_currency_separates_the_live_roster_from_the_archive() -> None:
+    """Only Main_data is still maintained; the other tabs freeze on exit.
+
+    Confirmed by the institute — the batch/faculty/branch edits land on the
+    active roster. A breakdown that mixes the tabs compares today's Main_data
+    against an exit snapshot from years ago.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Student Name": ["a", "b", "c"],
+        "Branch": ["vesu", "pal", "pal"],
+        "completion_status": ["active", "completed", "not_coming"],
+    })
+    issues: list = []
+    agent._flag_mutable_attributes(df, {"branch": "Branch"}, issues)
+
+    assert list(df["attribute_currency"]) == ["current", "at_exit", "at_exit"]
+    assert "1 row(s) are current and 2 are frozen" in issues[0], issues[0]
+
+    # No lifecycle membership: the caveat stands, but there is nothing to split.
+    plain = pd.DataFrame({"Branch": ["vesu"]})
+    notes: list = []
+    agent._flag_mutable_attributes(plain, {"branch": "Branch"}, notes)
+    assert "attribute_currency" not in plain.columns
+    assert "frozen" not in notes[0]
+
+
+def test_current_admission_is_the_latest_one() -> None:
+    """student-id is an ADMISSION id; a person's fee position is their latest.
+
+    Summing every admission overstates both revenue and receivable, because
+    earlier ids are closed history.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Student Name": ["Khiren Jain"] * 3 + ["Ava Lin"],
+        # Fabricated 77700 block, as used throughout the sample data.
+        "Mobile No (Student)": ["7770000100"] * 3 + ["7770000101"],
+        "Date of Joining": pd.to_datetime(
+            ["2022-04-02", "2023-10-28", "2023-11-08", "2024-01-01"]),
+        "student-id": [3, 244, 609, 1070],
+        "Amt Pending": [5000, 3000, 1000, 0],
+    })
+    roles = {"name": "Student Name", "student_mobile": "Mobile No (Student)",
+             "joining_date": "Date of Joining", "student_id": "student-id",
+             "pending": "Amt Pending"}
+    issues: list = []
+    agent._derive_person_id(df, roles, issues)
+
+    assert list(df["person_admission_seq"]) == [3, 2, 1, 1]
+    assert list(df["is_current_admission"]) == [False, False, True, True]
+
+    note = next(i for i in issues if "superseded" in i)
+    assert "2 row(s) are superseded" in note
+    # 8,000 of 9,000 outstanding sits on admissions the institute considers closed.
+    assert "8,000 of 9,000 outstanding (89%)" in note, note
+
+
+def test_current_admission_withheld_without_a_discriminator() -> None:
+    """On a name-only key this would supersede one namesake with another."""
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Name": ["Rahul Shah", "Rahul Shah"],
+        "Date of Joining": pd.to_datetime(["2022-01-01", "2024-01-01"]),
+        "student-id": [10, 20],
+    })
+    issues: list = []
+    agent._derive_person_id(
+        df, {"name": "Name", "joining_date": "Date of Joining",
+             "student_id": "student-id"}, issues,
+    )
+    assert "is_current_admission" not in df.columns
+    assert "person_admission_seq" not in df.columns
+
+
+def test_branch_is_a_closed_set_of_three() -> None:
+    """Citylight, Vesu, Pal — confirmed by the institute. Nothing else is a site.
+
+    "adajan" really appears in a branch column in the sheets, but Adajan is a
+    locality; accepting it as a branch invents a fourth centre and splits a
+    real branch's numbers across two rows of every breakdown.
+    """
+    assert cm.BRANCHES == ("citylight", "vesu", "pal")
+    for raw, expected in [("Vesu", "vesu"), ("City Light", "citylight"),
+                          ("  PAL  ", "pal"), ("clt", "citylight"),
+                          ("palanpur patiya", "pal")]:
+        assert cm.canonicalize_branch(raw) == expected, raw
+        assert cm.is_known_branch(raw), raw
+
+    # Blanks are absence, not a place.
+    for blank in ("", "NA", "n/a", "-", None):
+        assert cm.canonicalize_branch(blank) in (None, blank)
+        assert not cm.is_known_branch(blank)
+
+    # canonicalize_branch reports what the cell SAID. Resolving a locality to
+    # the site that serves it is a separate, opt-in step, so this stays honest.
+    assert cm.canonicalize_branch("Adajan") == "adajan"
+    assert not cm.is_known_branch("Adajan")
+
+
+def test_locality_in_a_branch_column_resolves_to_the_serving_branch() -> None:
+    """Adajan is an area served by the Pal centre, not a fourth branch.
+
+    Left alone it splits Pal's numbers across two rows of every breakdown; the
+    resolution has to be reversible, so the original locality is kept.
+    """
+    assert cm.branch_from_locality("Adajan") == "pal"
+    assert cm.branch_from_locality("ADAJAN ") == "pal"
+    # A real branch is not a locality — None means "nothing to resolve".
+    assert cm.branch_from_locality("Vesu") is None
+    assert cm.branch_from_locality(None) is None
+
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Branch": ["Vesu", "Adajan", "City Light", "NA"],
+        "Student Name": ["a", "b", "c", "d"],
+    })
+    issues: list = []
+    agent._apply_canonical_maps(df, {"branch": "Branch", "name": "Student Name"},
+                                issues)
+
+    assert list(df["Branch"]) == ["vesu", "pal", "citylight", None]
+    # Auditable: the cell said "adajan" and only that row carries the trace.
+    trace = df["Branch_locality"]
+    assert list(trace.notna()) == [False, True, False, False]
+    assert trace.iloc[1] == "adajan"
+    # Every value is a real site now, so there is nothing left to flag.
+    assert "is_known_branch" not in df.columns
+    note = next(i for i in issues if "named a locality" in i)
+    assert "adajan" in note and "Branch_locality" in note, note
+
+
+def test_unknown_branches_are_flagged_not_dropped() -> None:
+    """A value with no known locality mapping is kept as-is and made visible."""
+    agent = DataEngineerAgent(output_dir="output")
+    df = pd.DataFrame({
+        "Branch": ["Vesu", "Katargam", "City Light", "NA"],
+        "Student Name": ["a", "b", "c", "d"],
+    })
+    issues: list = []
+    agent._apply_canonical_maps(df, {"branch": "Branch", "name": "Student Name"},
+                                issues)
+
+    # Not dropped, and not guessed into a site — that would move a student
+    # between centres on nothing but a name.
+    assert list(df["Branch"]) == ["vesu", "katargam", "citylight", None]
+    assert list(df["is_known_branch"]) == [True, False, True, True]
+    note = next(i for i in issues if "outside the three branches" in i)
+    assert "katargam" in note and "citylight, vesu, pal" in note, note
+
+    # All-clean data gets no flag column at all — an all-True column would
+    # mean "we checked" and read as "there is something to check".
+    clean = pd.DataFrame({"Branch": ["Vesu", "pal"], "Student Name": ["a", "b"]})
+    agent._apply_canonical_maps(clean, {"branch": "Branch"}, [])
+    assert "is_known_branch" not in clean.columns
+    assert "Branch_locality" not in clean.columns
+
+
+def test_two_different_yash_never_merge() -> None:
+    """"Yash Sir" and "Yash Kanodia Sir" are two people; "Yash k" is the latter.
+
+    Re-asserted here because staff promoted from the student body add new
+    faculty names at generation time, and a shortening rule that merged first
+    names would collapse these two humans into one.
+    """
+    assert cm.canonicalize_faculty("yash kanodia sir") == "yash kanodia"
+    assert cm.canonicalize_faculty("yash k") == "yash kanodia"
+    assert cm.canonicalize_faculty("yash sir") == "yash"
+    assert cm.canonicalize_faculty("yash") == "yash"
+    assert cm.canonicalize_faculty("yash") != cm.canonicalize_faculty("yash k")
+
+
+def test_placeholder_headers_claim_no_role() -> None:
+    """pandas writes "Unnamed: 18" for a headerless column — it contains "name".
+
+    Any sheet with a trailing blank column and no real name column bound the
+    name role to the blank one.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    roles = agent._detect_roles(pd.DataFrame({
+        "Unnamed: 18": ["", ""], "Mobile No (Student)": ["9990001111", "9990002222"]}))
+    assert "name" not in roles, roles
+
+
+def test_timestamp_is_a_join_key_not_an_enquiry_date() -> None:
+    """`Timestamp` means different things on different sheets.
+
+    On the admission form and student-data it is the join key between them;
+    treating it as an enquiry date invents a lead date for every admission,
+    and with it a lead-to-admission time of zero.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+
+    admission = pd.DataFrame({"Timestamp": ["06/04/2024 12:09:34"],
+                              "Date of Admission": ["05/04/2024"],
+                              "Student Name": ["asha"]})
+    roles = agent._detect_roles(admission)
+    agent._specialize_roles(admission, roles, [])
+    assert roles.get("record_timestamp") == "Timestamp"
+    assert "enquiry_date" not in roles, "an admission sheet has no enquiry date"
+
+    # An enquiry sheet carrying BOTH keeps the explicit date for lead timing.
+    enquiry = pd.DataFrame({"Timestamp": ["06/04/2024 12:09:34"],
+                            "Date of Enquiry": ["04/04/2024"],
+                            "Student Name": ["asha"]})
+    roles = agent._detect_roles(enquiry)
+    agent._specialize_roles(enquiry, roles, [])
+    assert roles["enquiry_date"] == "Date of Enquiry"
+    assert roles["record_timestamp"] == "Timestamp"
+
+    # An enquiry sheet with only a Timestamp still gets an enquiry date.
+    only = pd.DataFrame({"Timestamp": ["06/04/2024 12:09:34"],
+                         "Student Name": ["asha"]})
+    roles = agent._detect_roles(only)
+    agent._specialize_roles(only, roles, [])
+    assert roles["enquiry_date"] == "Timestamp"
+
+
+def test_bare_mode_and_status_are_resolved_by_context() -> None:
+    """A generic header gets a contextual alias; the generic key survives."""
+    agent = DataEngineerAgent(output_dir="output")
+
+    student = pd.DataFrame({"Student Name": ["asha", "bimal"],
+                            "Mode": ["Online", "offline"],
+                            "Date of Joining": ["01/03/2025", "02/03/2025"]})
+    roles = agent._detect_roles(student)
+    agent._specialize_roles(student, roles, [])
+    assert roles["learning_mode"] == "Mode"
+    assert roles["mode"] == "Mode", "the generic key must remain for derivations"
+
+    fees = pd.DataFrame({"Name": ["asha"], "Status": ["Pending"],
+                         "Amt Pending": ["500"]})
+    roles = agent._detect_roles(fees)
+    agent._specialize_roles(fees, roles, [])
+    assert roles["fee_status"] == "Status"
+
+
+def test_preferences_do_not_merge_with_actuals() -> None:
+    """Preferred branch/time is what was asked for, not where they ended up."""
+    agent = DataEngineerAgent(output_dir="output")
+    roles = agent._detect_roles(pd.DataFrame({
+        "Preferred Branch ": ["Vesu"], "Branch": ["Adajan"],
+        "Preferred Batch Time": ["02:00 To 03:00"], "Batch Timing": ["06:00 To 07:00"],
+    }))
+    assert roles["preferred_branch"] == "Preferred Branch "
+    assert roles["branch"] == "Branch"
+    assert roles["preferred_batch_time"] == "Preferred Batch Time"
+    assert roles["batch_time"] == "Batch Timing"
+
+
+def test_both_guardian_numbers_get_a_role() -> None:
+    """The second guardian number was masked as an anonymous discovered field."""
+    agent = DataEngineerAgent(output_dir="output")
+    roles = agent._detect_roles(pd.DataFrame({
+        "Mobile No (Father / Guardian)": ["9990001111"],
+        "Mobile No (Mother / Guardian)": ["9990002222"]}))
+    assert roles["parent_mobile"] == "Mobile No (Father / Guardian)"
+    assert roles["parent_mobile_2"] == "Mobile No (Mother / Guardian)"
+
+
+def test_field_names_use_the_institute_vocabulary() -> None:
+    """Operator-facing output should use their words, not internal role keys."""
+    agent = DataEngineerAgent(output_dir="output")
+    named = agent._field_names({"name": "Student Name", "amount": "Total Fees",
+                                "paid": "paid amt", "pending": "Amt Pending",
+                                "source": "From Where Do You Know About Us ?",
+                                "faculty": "Faculty",
+                                "discovered_dim_1": "Column 1"})
+    assert named["Student Name"] == "student_name"
+    assert named["Total Fees"] == "total_fee"
+    assert named["paid amt"] == "paid_amount"
+    assert named["Amt Pending"] == "amount_pending"
+    assert named["From Where Do You Know About Us ?"] == "lead_source"
+    assert named["Faculty"] == "faculty_name"
+    # A merely-profiled column keeps its own header — naming it would claim
+    # more understanding of it than we have.
+    assert "Column 1" not in named
+
+
+def test_ledger_collections_never_sum_the_fee_total() -> None:
+    """Receipt rows carry BOTH this payment and the whole fee obligation.
+
+    `Total Fees` repeats on every receipt row of one student, so summing it
+    counts the obligation once per installment. Measured on the sample before
+    this was fixed: ₹1.73 crore "collected" against ₹71.3 lakh actually paid,
+    and a collection efficiency of 229.9%.
+    """
+    agent = DataEngineerAgent(output_dir="output")
+    roles = {"paid": "paid amt", "amount": "Total Fees",
+             "receipt_id": "Receipt-id", "student_id": "student-id"}
+    assert agent._ledger_money_column(roles) == "paid amt"
+
+    # A ledger with no paid column falls back to the only money it has.
+    assert agent._ledger_money_column(
+        {"amount": "Total Fees", "receipt_id": "Receipt-id"}) == "Total Fees"
+    assert agent._ledger_money_column({"receipt_id": "Receipt-id"}) is None
+
+
+def test_blocked_person_metric_says_what_to_supply() -> None:
+    """"Required column missing" does not tell an operator what to do next."""
+    from agents.analyst_agent import AnalystAgent
+
+    package = {
+        "status": "ready",
+        "canonical_df_path": "",
+        "quality_report": {"person_id_basis": ["name"]},
+    }
+    reason = AnalystAgent()._why_missing(
+        "repeat_enrollment_rate",
+        {"kind": "rate", "flag": "is_repeat_enrollment"},
+        package,
+    )
+    assert "same name" in reason and "contact details" in reason, reason
+
+    # With a real identity behind it, a missing column is just missing.
+    package["quality_report"]["person_id_basis"] = ["name", "student_mobile"]
+    assert AnalystAgent()._why_missing(
+        "repeat_enrollment_rate",
+        {"kind": "rate", "flag": "is_repeat_enrollment"},
+        package,
+    ) == "required column missing."
 
 
 def main() -> int:

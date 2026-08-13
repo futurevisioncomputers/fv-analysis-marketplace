@@ -23,6 +23,73 @@ from __future__ import annotations
 import re
 from typing import List, Optional, Tuple
 
+# ----------------------------------------------------------------- branch
+
+# The institute has exactly three branches. This is a closed set, confirmed by
+# the institute — which makes it useful in a way an open dimension is not: a
+# value outside it is a data-entry error, not a fourth branch. In the real
+# sheets "adajan" appears in a branch column, but Adajan is a *locality*
+# (it belongs in Residential Area), so grouping by branch silently invents a
+# site that does not exist.
+BRANCHES = ("citylight", "vesu", "pal")
+
+# Localities that turn up in branch columns, and the branch they are served by.
+# Confirmed by the institute: Adajan is an area a short way from the Pal centre,
+# so a branch cell reading "adajan" is someone writing the neighbourhood instead
+# of the site, and the site is Pal.
+#
+# This is an inference and is kept separate from `canonicalize_branch` on
+# purpose: the closed-set check stays honest about what the cell literally said,
+# and the caller decides whether to resolve. When it does resolve, the original
+# locality is preserved so the move is auditable and reversible.
+LOCALITY_BRANCH = {
+    "adajan": "pal",
+}
+
+# Spelling drift seen in the sheets. Kept explicit rather than fuzzy-matched:
+# a near-miss on a three-item set is far more likely to be a different concept
+# (a locality, a course code) than a typo worth absorbing.
+_BRANCH_ALIASES = {
+    "city light": "citylight", "city-light": "citylight", "clt": "citylight",
+    "vesu branch": "vesu", "pal branch": "pal", "palanpur patiya": "pal",
+}
+
+# Values that mean "not recorded" rather than a place.
+_BRANCH_BLANKS = {"", "na", "n/a", "none", "-", "nil"}
+
+
+def canonicalize_branch(value: Optional[str]) -> Optional[str]:
+    """One of the three branches, None when blank, or the value unchanged.
+
+    An unrecognized value is returned as-is rather than dropped or forced into
+    the nearest branch: it is real data that belongs somewhere, and quietly
+    reassigning it would move a student between sites. `is_known_branch` is how
+    a caller flags it.
+    """
+    if not isinstance(value, str):
+        return value
+    text = re.sub(r"\s+", " ", value).strip().lower()
+    if text in _BRANCH_BLANKS:
+        return None
+    text = _BRANCH_ALIASES.get(text, text)
+    return text
+
+
+def is_known_branch(value: Optional[str]) -> bool:
+    """True when the value is one of the institute's three branches."""
+    return canonicalize_branch(value) in BRANCHES
+
+
+def branch_from_locality(value: Optional[str]) -> Optional[str]:
+    """The branch serving a locality written in a branch column, else None.
+
+    None means "not a locality we recognize" — including for values that are
+    already branches. Callers use a non-None result to rewrite the cell while
+    keeping the original.
+    """
+    return LOCALITY_BRANCH.get(canonicalize_branch(value) or "")
+
+
 # ---------------------------------------------------------------- faculty
 
 _HONORIFIC_RE = re.compile(r"\b(?:sir|mam|ma'am|madam|miss)\b\.?", re.IGNORECASE)

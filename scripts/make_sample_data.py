@@ -34,13 +34,13 @@ def main() -> None:
         ["Student-ID", "Student Name", "Mobile No (Student)", "Email",
          "Date of Admission", "Which Course", "Branch", "Faculty", "From Where"],
         [
-            [101, "Aarav Shah", "9820011111", "aarav@example.com",
+            [101, "Aarav Shah", "9990012345", "aarav@example.com",
              "2025-01-10", "Tally", "Adajan", "Mansi Mam", "Google"],
-            [102, "Isha Patel", "9820022222", "isha@example.com",
+            [102, "Isha Patel", "9990023456", "isha@example.com",
              "2025-02-05", "DTP", "Pal", "Yash Sir", "Instagram"],
-            [103, "Rohan Mehta", "9820033333", "rohan@example.com",
+            [103, "Rohan Mehta", "9990034567", "rohan@example.com",
              "2025-03-12", "Tally", "Adajan", "Mansi Mam", "Walk-in"],
-            [105, "Aarav Shah", "9820011111", "aarav@example.com",
+            [105, "Aarav Shah", "9990012345", "aarav@example.com",
              "2025-06-01", "Python", "Adajan", "Kiran Sir", "Referral"],
         ],
     )
@@ -51,13 +51,13 @@ def main() -> None:
         ["Timestamp", "Student Name", "Mobile No (Student)", "Which Course",
          "Preferred Branch", "From Where", "Date of Admission", "Status"],
         [
-            ["2025-01-02", "Aarav Shah", "9820011111", "Tally",
+            ["2025-01-02", "Aarav Shah", "9990012345", "Tally",
              "Adajan", "Google", "2025-01-10", "Converted"],
-            ["2025-01-28", "Isha Patel", "9820022222", "DTP",
+            ["2025-01-28", "Isha Patel", "9990023456", "DTP",
              "Pal", "Instagram", "2025-02-05", "Converted"],
-            ["2025-03-01", "Rohan Mehta", "9820033333", "Tally",
+            ["2025-03-01", "Rohan Mehta", "9990034567", "Tally",
              "Adajan", "Walk-in", "2025-03-12", "Converted"],
-            ["2025-04-15", "Neha Verma", "9820044444", "DTP",
+            ["2025-04-15", "Neha Verma", "9990045678", "DTP",
              "Pal", "Instagram", "", "Lost"],
         ],
     )
@@ -113,7 +113,7 @@ def main() -> None:
         ["Student-ID", "Student Name", "Which Course", "Faculty",
          "Batch Timing", "Status & reason"],
         [[102, "Isha Patel", "DTP", "Yash Sir", "4-6",
-          "shifted to Mumbai, not coming, call 9820022222"]],
+          "shifted to Mumbai, not coming, call 9990023456"]],
     )
     _write(
         "timetable_Main_data.csv",

@@ -1,9 +1,22 @@
 {
   "name": "fv-analysis",
-  "version": "1.0.0",
-  "description": "FV Institute 8-agent analytics pipeline: problem statement to PII-safe HTML report. LLM augments narrative; numbers stay deterministic.",
+  "version": "2.0.0",
+  "description": "Institute analytics as resumable stages: a raw sheet becomes a PII-safe HTML report, pausing after every stage so the operator decides what happens next. Numbers are computed in Python and never by the model; a metric that cannot be computed is skipped with a reason.",
   "author": {
     "name": "Future Vision Computers Institute",
     "url": "https://github.com/futurevisioncomputers"
-  }
+  },
+  "homepage": "https://github.com/futurevisioncomputers/fv-analysis-marketplace",
+  "repository": "https://github.com/futurevisioncomputers/fv-analysis-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "analytics",
+    "data-cleaning",
+    "reporting",
+    "education",
+    "kpi",
+    "statistics",
+    "churn",
+    "pii-masking"
+  ]
 }

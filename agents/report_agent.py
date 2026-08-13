@@ -52,6 +52,12 @@ _MOBILE_RE = re.compile(r"\b\d{10}\b")
 _FORMATTED_PHONE_RE = re.compile(r"\+?\d[\d\s().\-]{8,14}\d")
 _PHONE_SEPARATORS = set(" +().-")
 
+# A plain decimal number, optionally signed. `-279345.8333` has eleven digits
+# and a "." — which the separator rule counts as a formatted phone, blocking a
+# whole report over a chart label. A phone number is never a single signed
+# decimal literal, so these are excluded before the digit count is applied.
+_DECIMAL_LITERAL_RE = re.compile(r"^\d+(?:\.\d+)?$")
+
 
 def _contains_mobile(text: str) -> bool:
     """True if a bare-10-digit or a formatted phone number survives in `text`."""
@@ -59,6 +65,19 @@ def _contains_mobile(text: str) -> bool:
         return True
     for m in _FORMATTED_PHONE_RE.finditer(text):
         run = m.group(0)
+        # Look at the whole literal, not the window the regex happened to
+        # capture: a trailing digit of a longer number would otherwise be cut
+        # off and the remainder read as a phone.
+        start, end = m.start(), m.end()
+        while start > 0 and (text[start - 1].isdigit() or text[start - 1] in "-+."):
+            start -= 1
+        while end < len(text) and (text[end].isdigit() or text[end] == "."):
+            end += 1
+        # Strip the sign and any sentence-ending dot before deciding. A phone
+        # is never a single signed decimal; a chart label routinely is.
+        literal = text[start:end].lstrip("+-").strip(".")
+        if _DECIMAL_LITERAL_RE.match(literal):
+            continue
         n_digits = sum(ch.isdigit() for ch in run)
         # Require a separator so a pure 11-13 digit numeric literal (epoch ms, a
         # large metric value in a chart config) is not mistaken for a phone.
@@ -277,6 +296,7 @@ class ReportAgent:
             + self._exec_section(narrative["executive"])
             + self._kpi_strip(qresults, fr)
             + self._multi_source_section(fr)
+            + self._cross_factor_section(fr)
             + self._business_tiles(pages, routed)
             + self._recs_section(fr, narrative["recommendations"])
             + self._monitoring_section(fr, narrative["monitoring"])
@@ -472,6 +492,68 @@ class ReportAgent:
             f"<div class='kpis source-kpis'>{''.join(cards)}</div>"
             f"{table}{metric_table}{warn_block}</section>"
         )
+
+    def _cross_factor_section(self, fr) -> str:
+        """Spec §21/§23 — where two factors combine into something new.
+
+        Rendered even when nothing was found. "Every difference here is
+        explained by one dimension on its own" is a real conclusion, and a
+        section that vanishes on a null result trains the reader to expect a
+        finding whenever it appears.
+        """
+        cross = fr.get("cross_factor") or {}
+        if cross.get("status") != "ready":
+            return ""
+
+        pairs = cross.get("pairs_examined") or []
+        crossed = ", ".join(f"{p['rows']} × {p['cols']}" for p in pairs)
+        findings = cross.get("interactions") or []
+        metric = html.escape(str(cross.get("metric", "the metric")))
+
+        if not findings:
+            thin = sum(p.get("cells_suppressed", 0) for p in pairs)
+            tested = sum(p.get("cells_tested", 0) for p in pairs)
+            detail = (
+                f"{tested} cell(s) had enough rows to test"
+                + (f"; {thin} were below the floor and were not shown"
+                   if thin else "")
+            )
+            return (
+                "<section class='panel cross-factor'>"
+                "<h3>Factor analysis</h3>"
+                f"<p>Crossed {html.escape(crossed)} on {metric}. "
+                f"{html.escape(cross.get('verdict', ''))}</p>"
+                f"<p class='muted'>{html.escape(detail)}. A cell counts only "
+                f"when it differs from both of its margins after correction "
+                f"for the number of cells examined.</p></section>"
+            )
+
+        rows = "".join(
+            "<tr>"
+            f"<td>{html.escape(str(f['row']))} × {html.escape(str(f['col']))}</td>"
+            f"<td>{self._fmt_rate(f.get('value'))}</td>"
+            f"<td>{self._fmt_rate(f.get('row_margin'))}</td>"
+            f"<td>{self._fmt_rate(f.get('col_margin'))}</td>"
+            f"<td>{self._fmt_rate(f.get('expected_additive'))}</td>"
+            f"<td>{int(f.get('n', 0)):,}</td>"
+            "</tr>"
+            for f in findings[:10]
+        )
+        return (
+            "<section class='panel cross-factor'>"
+            "<h3>Factor analysis</h3>"
+            f"<p>Crossed {html.escape(crossed)} on {metric}. "
+            f"{html.escape(cross.get('verdict', ''))} — each one differs from "
+            f"both of its margins, so neither factor alone explains it.</p>"
+            "<table class='rectable compact'><tr>"
+            "<th>Combination</th><th>Observed</th><th>Row alone</th>"
+            "<th>Column alone</th><th>Both predict</th><th>n</th></tr>"
+            f"{rows}</table></section>"
+        )
+
+    @staticmethod
+    def _fmt_rate(value) -> str:
+        return "—" if value is None else f"{float(value):.1%}"
 
     def _question_block(self, q, namespace: str = "") -> (str, List[str]):
         qid = html.escape(str(q.get("question_id", "")))

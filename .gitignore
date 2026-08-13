@@ -10,3 +10,12 @@ fv_report.html
 fv_report2.html
 fv_run.json
 monitoring_registry.json
+
+# Run sessions: derived artifacts (cleaned.csv, canonical.parquet, report.html)
+# plus the session state that ties them together. Regenerable from samples/.
+.fv/
+output/
+
+# Permission grants accrete per-session and per-machine. Not plugin content.
+.claude/settings.json
+.claude/settings.local.json

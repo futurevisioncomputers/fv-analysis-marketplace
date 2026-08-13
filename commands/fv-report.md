@@ -1,34 +1,23 @@
 ---
-description: Regenerate the HTML report from a saved FV run JSON (no re-analysis)
-argument-hint: <run-json-path> [output.html]
+description: Compose the shareable HTML report from the run, or re-render an earlier one from its saved JSON (Report Writer (stage 8)), then stop at a checkpoint
+argument-hint: [csv-or-xlsx-path-or-sheet-url] [business question]
 allowed-tools: Bash, Read
 ---
 
-Regenerate the FV Institute multi-page HTML dashboard from a previously saved
-run JSON, without re-running the pipeline. Use this to restyle/re-export a past
-analysis cheaply.
+Run Report Writer (stage 8) for the user and stop there. Follow the `fv-report` skill for
+what to show and what to offer; this command only resolves the arguments.
 
 User input: `$ARGUMENTS`
 
-Steps:
-
-1. Parse the input. The first token is the path to a saved run JSON (produced by
-   `fv-analyze` / the CLI's `--json` flag; it contains `final_report` and
-   `question_results`). The optional second token is the output HTML path
-   (default `fv_report.html`).
-
-2. Render the report from that JSON:
+1. If a source is given, pick its flag: `http…` → `--sheet-url`, `.xlsx` →
+   `--excel`, `.csv` → `--csv`. Anything after it is the business question.
+   With no source, continue the existing session at `.fv/session`.
+2. Run it — prerequisites back-fill automatically:
 
    ```bash
-   python "${CLAUDE_PLUGIN_ROOT}/scripts/run_pipeline.py" \
-     --from-json "<run json path>" \
-     --out "<output html>"
+   python "${CLAUDE_PLUGIN_ROOT}/scripts/run_stage.py" \
+     [--csv "<source>"] [--question "<question>"] --stage report --json
    ```
 
-3. Tell the user the absolute path of the written HTML and to open it in a browser.
-   The report includes connected pages for overview, financial, operational,
-   product/course performance, branch/store performance, and sales/faculty
-   performance. Do not paste the HTML into the chat.
-
-4. If the JSON is missing or malformed, relay the error. To produce a run JSON,
-   run `fv-analyze` (or the CLI with `--json run.json`).
+3. Present the checkpoint and wait. Exit code 2 means the stage refused —
+   relay its reason verbatim and stop.

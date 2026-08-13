@@ -1,5 +1,5 @@
 ---
-description: Run the FV Institute analytics pipeline on one or more sheets and produce an HTML dashboard
+description: Run the whole FV Institute pipeline unattended (no checkpoints) and produce an HTML dashboard — use /fv-run to walk it stage by stage
 argument-hint: <csv-or-xlsx-path-or-google-sheet-url> [business question]
 allowed-tools: Bash, Read
 ---

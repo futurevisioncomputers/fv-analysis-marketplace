@@ -1,57 +1,88 @@
 ---
 name: fv-analysis
-description: FV Institute end-to-end data analysis. Use when the user has an institute data sheet (CSV/XLSX of admissions, fees, certificates, leads, courses, branches) and wants analysis, KPIs, insights, recommendations, monitoring, or a shareable report. Runs the 8-agent pipeline (problem definition -> data cleaning + PII masking -> EDA -> analysis -> visualization -> insights -> recommendations -> monitoring -> HTML report). Triggers on requests to analyze a sheet, build a dashboard report, find why a metric dropped, or compare branches/courses/sources.
+description: FV Institute analytics — the router. Use when the user points at an institute data sheet (admissions, enquiries, fees, receipts, certificates, timetable tabs) and wants analysis, KPIs, insights, recommendations, monitoring or a report, but has not named a particular stage. Picks between an unattended run, a guided stage-by-stage walk, and the single-stage skills. Triggers on "analyze this sheet", "what does this data say", "build me a report", "why did admissions drop", "compare branches".
 ---
 
-# FV Institute Analysis
+# FV Institute analysis
 
-End-to-end analytics for Future Vision Computers Institute (Surat; branches Vesu,
-Pal, Citylight). Turns a raw data sheet into a decision-grade HTML report.
+End-to-end analytics for Future Vision Computers Institute (Surat; branches
+Vesu, Pal, Citylight). A raw sheet becomes a decision-grade HTML report.
 
-## When to use
-- The user points at a CSV/XLSX of institute data and asks a business question.
-- They want a report, dashboard, KPI summary, root-cause, or branch/course comparison.
-- They want recommendations or KPI monitoring/alerts from their data.
+This skill routes. Pick one of three shapes, then follow that skill.
 
-## How to run
+## Which shape
 
-The pipeline is a Python engine; drive it through the CLI (works on any PC):
+| The user wants | Use | Why |
+|---|---|---|
+| One thing — clean it, get the numbers, chart it | the **stage skill** (`fv-clean`, `fv-metrics`, `fv-charts`, …) | prerequisites back-fill, so a single stage works on a bare CSV |
+| The whole analysis, but wants to see each step | **`fv-run`** | twelve stages, a checkpoint after each |
+| The whole thing, unattended | `run_pipeline.py` or `run_stage.py --auto` | no pauses; what the web service uses |
 
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/run_pipeline.py" \
-  --csv "<sheet path>" \
-  --question "<business question>" \
-  --out "fv_report.html" \
-  --json "fv_run.json"
-```
+When in doubt, prefer `fv-run`. Most operators here supply one sheet and do not
+yet know what it can answer — the stage-1 checkpoint tells them before the
+pipeline spends any time.
 
-- `--out` writes the standalone HTML report (open in a browser).
-- `--json` saves the run contracts so the report can be re-rendered later with
-  `--from-json` (no re-analysis).
-- Or use the slash commands: `/fv-analyze` (run + report) and `/fv-report`
-  (re-render from saved JSON).
+## The stages and their skills
 
-## The 8 agents (what they produce)
-1. **Problem Definition** — scopes the question into modules + business questions + KPIs.
-2. **Data Engineer** — cleans the sheet, parses dates, derives funnel flags, and is the
-   ONLY agent that sees raw PII (masks names/mobiles/email/DOB to salted hashes).
-3. **EDA** — distributions, time trends, cross-tabs (chi²/Cramér's V), anomalies.
-4. **Analyst** — headline metric with a 95% CI, breakdowns, comparisons, drivers.
-5. **Visualization** — Chart.js-ready configs, KPI cards, alerts.
-6. **Insights** — findings, root causes, risks, opportunities (no actions).
-7. **Recommendation** — prioritized, owner-tagged actions (the only action-proposing agent).
-8. **Report Writer** — composes the shareable HTML report from all of the above.
-   (Monitoring runs alongside, registering KPI hooks and raising threshold alerts.)
+| # | Stage | Skill | Produces |
+|---|---|---|---|
+| 1 | Problem Definition | `fv-questions` | scoped questions + what data they need |
+| 2.5 | Schema / Source Plan | `fv-schema` | column→role mapping, join plan |
+| 2 | Data Engineer | `fv-clean` | masked canonical frame, quality report, `cleaned.csv` |
+| 2.7 | Feature Engineering | `fv-features` | proposed derived columns *(approval-gated)* |
+| 3 | EDA | `fv-eda` | distributions, trends, anomalies |
+| 4 | Analyst | `fv-metrics` | metrics with 95% CIs and breakdowns |
+| 4.5 | Prediction | `fv-predict` | churn model *(optional, refuses on thin labels)* |
+| 5 | Visualization | `fv-charts` | Chart.js configs, KPI cards |
+| 6 | Insights | `fv-insights` | findings, root causes, risks |
+| 6.5 | Recommendation | `fv-actions` | prioritized, owner-tagged actions |
+| 7 | Monitoring | `fv-monitor` | KPI hooks and alerts |
+| 8 | Report Writer | `fv-report` | the shareable HTML |
 
-## Boundaries (do not violate)
-- **Numbers are deterministic.** The LLM only phrases narrative prose; it never
-  computes or invents a metric. If a metric is not computable on the data, the
-  question is skipped honestly — never fabricate a chart or number.
-- **PII never leaves masked.** Only Agent 2 sees raw PII. The report asserts no
-  10-digit mobile survives before it is written. Never echo raw PII to the user.
-- **Relay, don't invent.** Report only what the CLI/engine produced.
+State lives in `.fv/session`, so the skills compose: `/fv-clean` today and
+`/fv-metrics` tomorrow continue one run.
 
-## Expected data
-Sheets with columns describing students/admissions/fees/certificates work best.
-Unknown/renamed headers are handled by value-based role discovery, but a fully
-cryptic sheet may block — then tell the user which columns are missing.
+## Two skills that are not stages
+
+They read a session that has already been cleaned and write nothing back. Reach
+for them when a number is in hand and the question is what it means.
+
+| Skill | Answers |
+|---|---|
+| `fv-stats` | Is that difference real? When do students leave? Are newer cohorts worse? Is that a trend? |
+| `fv-cross` | Which *combination* is the problem — this course at that branch, this tutor in that slot |
+
+`fv-cross` exists because one metric by one dimension cannot see an
+interaction: a branch and a course can each look mildly above average while one
+cell of the two is three times the rate. If a single breakdown already answers
+the question, do not reach for it.
+
+## Boundaries — these hold in every skill
+
+- **Numbers are deterministic.** The LLM phrases prose; it never computes or
+  invents a metric. A metric that cannot be computed produces a *skipped
+  question with a reason*, never an estimate.
+- **PII is masked at stage 2 and never unmasked.** Only the Data Engineer sees
+  raw values. Never echo them.
+- **Refusals are results.** A blocked stage said why; relay it and stop.
+- **Relay, do not embellish.** Every number shown comes from the payload.
+
+## What the sheets are
+
+Four workbooks, each owned by a different role — which is why the same person
+is spelled three ways across them, and why a single-sheet run has a known
+audience:
+
+| Workbook | Owner | Typical report |
+|---|---|---|
+| Admission Form (Responses) | counsellor | admissions, source, conversion |
+| Enquiry Form (Responses) 1 & 2 | counsellor | lead quality, follow-up backlog |
+| student-data-sheet (student-data, fees-data, fees-recpit, certificate-data) | admin | collections, pending, certificates |
+| Student_Time_Table2023 (Main_data, Course_Completed, Not_Coming, NOT TO ENTERTRAIN) | faculty | batch load, completion, churn |
+
+`docs/form_schema_notes.md` has the exact headers, the join map, and the
+defects worth knowing before promising an answer. `docs/reporting_spec_v2.md`
+records what the institute wants reported and what is not built yet.
+
+One sheet at a time is the normal case. Ask for a second only when the question
+genuinely needs the join.
