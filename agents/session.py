@@ -151,7 +151,7 @@ class Session:
     def _blank() -> JsonDict:
         return {
             "version": 1,
-            "created_at": dt.datetime.now().isoformat(timespec="seconds"),
+            "created_at": dt.datetime.now().isoformat(timespec="milliseconds"),
             "updated_at": None,
             "question": "",
             "csv_path": "",
@@ -191,7 +191,7 @@ class Session:
         new one, never a truncated mix.
         """
         os.makedirs(self.path, exist_ok=True)
-        self.state["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
+        self.state["updated_at"] = dt.datetime.now().isoformat(timespec="milliseconds")
         target = os.path.join(self.path, SESSION_FILE)
         fd, tmp = tempfile.mkstemp(dir=self.path, prefix=".session-", suffix=".tmp")
         try:
@@ -205,6 +205,27 @@ class Session:
 
     # ----------------------------------------------------------------- stages
 
+    def begin(self, key: str) -> None:
+        """Mark a stage as running, before its agent is called.
+
+        Written to disk immediately and on purpose: a watcher — the studio UI,
+        a tail on the file — can only show which agent is working if the fact
+        is durable before the work starts. A crash mid-stage also leaves
+        `running` behind rather than silence, which is the truth.
+        """
+        if key not in STAGE_BY_KEY:
+            raise SessionError(
+                f"Unknown stage {key!r}. Known: {', '.join(STAGE_KEYS)}")
+        entry = self.state["stages"].get(key) or {}
+        entry.update({
+            "status": "running",
+            "started_at": dt.datetime.now().isoformat(timespec="milliseconds"),
+            "finished_at": None,
+            "duration_ms": None,
+        })
+        self.state["stages"][key] = entry
+        self.save()
+
     def record(
         self,
         key: str,
@@ -212,15 +233,38 @@ class Session:
         *,
         status: str = "done",
         summary: str = "",
+        metrics: Optional[Mapping[str, Any]] = None,
     ) -> None:
-        """Store a stage's output and mark it complete."""
+        """Store a stage's output and mark it complete.
+
+        `duration_ms` is computed from the `started_at` that `begin` wrote, so
+        a stage recorded without one (a direct call, an older session) simply
+        has no duration rather than a fabricated zero.
+        """
         if key not in STAGE_BY_KEY:
             raise SessionError(
                 f"Unknown stage {key!r}. Known: {', '.join(STAGE_KEYS)}")
+        previous = self.state["stages"].get(key) or {}
+        finished = dt.datetime.now()
+        started_at = previous.get("started_at")
+        duration_ms: Optional[int] = None
+        if started_at:
+            try:
+                started = dt.datetime.fromisoformat(started_at)
+                duration_ms = max(
+                    0, int((finished - started).total_seconds() * 1000))
+            except ValueError:
+                duration_ms = None
         self.state["stages"][key] = {
             "status": status,
             "summary": summary,
-            "finished_at": dt.datetime.now().isoformat(timespec="seconds"),
+            "started_at": started_at,
+            # Millisecond precision on both ends, or the duration carries up to
+            # a second of truncation error — which on stages that take a few
+            # hundred ms is most of the measurement.
+            "finished_at": finished.isoformat(timespec="milliseconds"),
+            "duration_ms": duration_ms,
+            "metrics": dict(metrics or {}),
             "result": result,
         }
         self.save()
@@ -275,17 +319,38 @@ class Session:
         return None
 
     def progress(self) -> List[JsonDict]:
-        """One row per stage for rendering the checkpoint rail."""
+        """One row per stage for rendering the checkpoint rail.
+
+        Carries `requires` and timing as well as status, so a caller can draw
+        the pipeline — its dependency edges, which agent is working, and how
+        long each took — without reaching into the state file itself.
+        """
         rows = []
+        total = sum(
+            (self.state["stages"].get(s["key"]) or {}).get("duration_ms") or 0
+            for s in STAGES)
         for stage in STAGES:
             entry = self.state["stages"].get(stage["key"]) or {}
+            duration = entry.get("duration_ms")
             rows.append({
                 "n": stage["n"],
                 "key": stage["key"],
                 "label": stage["label"],
+                "requires": list(stage["requires"]),
                 "optional": stage["key"] in OPTIONAL_STAGES,
                 "status": entry.get("status", "pending"),
                 "summary": entry.get("summary", ""),
+                "started_at": entry.get("started_at"),
+                "finished_at": entry.get("finished_at"),
+                "duration_ms": duration,
+                # Share of the run this agent accounted for. None means "not
+                # measured"; 0.0 means "measured, and it took no time" — a UI
+                # has to be able to tell those apart, so a 0 ms stage keeps a
+                # real share rather than falling through to None.
+                "duration_share": (
+                    (duration / total) if duration is not None and total > 0
+                    else None),
+                "metrics": entry.get("metrics") or {},
             })
         return rows
 
@@ -296,7 +361,7 @@ class Session:
         self.state["artifacts"][name] = {
             "path": os.path.abspath(path),
             "stage": stage,
-            "written_at": dt.datetime.now().isoformat(timespec="seconds"),
+            "written_at": dt.datetime.now().isoformat(timespec="milliseconds"),
         }
         self.save()
         return path
@@ -326,7 +391,7 @@ class Session:
             "stage": stage,
             "choice": choice,
             "detail": detail,
-            "at": dt.datetime.now().isoformat(timespec="seconds"),
+            "at": dt.datetime.now().isoformat(timespec="milliseconds"),
         })
         self.save()
 

@@ -625,6 +625,9 @@ def run_stage(session: Session, key: str) -> JsonDict:
     if runner is None:
         raise SessionError(
             f"Stage {key!r} has no runner. Available: {', '.join(RUNNERS)}")
+    # Durable before the work starts, so a watcher can see which agent is
+    # working rather than inferring it from silence.
+    session.begin(key)
     try:
         result = runner(session)
     except StageBlocked as blocked:
@@ -633,8 +636,99 @@ def run_stage(session: Session, key: str) -> JsonDict:
         raise
     # Summarize from the result in hand, not from the session: `record` has not
     # stored it yet, so reading it back would summarize nothing.
-    session.record(key, result, summary=summarize(key, result))
+    try:
+        metrics = stage_metrics(key, result)
+    except Exception as exc:  # noqa: BLE001
+        # Instrumentation must never cost a stage its result. A missed metric
+        # is a gap in a chart; a raised metric would strand the stage as
+        # `running` and lose work the agent already did.
+        session.add_error(f"Stage metrics unavailable for {key}: {exc}")
+        metrics = {}
+    session.record(key, result, summary=summarize(key, result), metrics=metrics)
     return session.state["stages"][key]
+
+
+# What each agent actually did, in numbers, on one comparable shape.
+#
+# `summary` is a sentence for a human and `details` is prose; neither can be
+# charted or compared across runs. These can. Every value is read from the
+# result the agent already returned — nothing is measured twice, and a stage
+# that does not report a given quantity simply omits the key rather than
+# reporting a zero that looks like a real measurement.
+def stage_metrics(key: str, result: Any) -> JsonDict:
+    """Comparable per-stage numbers for a performance view."""
+    if not isinstance(result, Mapping):
+        return {}
+    out: JsonDict = {}
+
+    def put(name: str, value: Any) -> None:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[name] = value
+
+    def count(value: Any) -> Optional[int]:
+        """How many, whether the agent returned a list or already a count.
+
+        The contracts are not uniform — `monitor` reports `active_alerts` as a
+        number while `insights` reports lists — and guessing wrong used to
+        raise inside the recorder and strand the stage as `running`.
+        """
+        if isinstance(value, bool) or value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        try:
+            return len(value)
+        except TypeError:
+            return None
+
+    def per_question(field: str) -> int:
+        return sum(len((q or {}).get(field) or [])
+                   for q in (result.get("by_question") or {}).values())
+
+    if key == "problem":
+        put("questions", count(result.get("business_questions")))
+        put("hypotheses", count(result.get("hypotheses")))
+    elif key == "schema":
+        put("sources_validated", count(result.get("sources_validated")))
+        put("joins_planned", count(result.get("join_plan")))
+    elif key == "clean":
+        put("rows_out", result.get("row_count"))
+        put("columns", count(result.get("canonical_columns")))
+        put("quality_notes", count(result.get("known_issues")))
+        quality = result.get("quality_report") or {}
+        put("rows_in", quality.get("original_row_count"))
+        put("rows_dropped", quality.get("drop_count"))
+        put("sources", count(result.get("source_summary")))
+    elif key == "features":
+        put("proposed", count(result.get("proposed")))
+        put("materialized", count(result.get("materialized")))
+    elif key == "eda":
+        put("rows", result.get("row_count"))
+        put("dimensions", count(result.get("profiled_dimensions")))
+        put("numeric_fields", count(result.get("profiled_numerics")))
+        put("anomalies", count(result.get("anomalies")))
+        put("hypotheses", count(result.get("candidate_hypotheses")))
+    elif key == "analyst":
+        put("questions_answered", count(result.get("answered")))
+        put("questions_skipped", count(result.get("skipped")))
+        put("crossings", count(result.get("cross_factor")))
+    elif key == "visualize":
+        put("charts", per_question("charts"))
+        put("kpi_cards", per_question("kpi_cards"))
+    elif key == "insights":
+        put("findings", per_question("key_findings"))
+        put("risks", per_question("risks"))
+        put("opportunities", per_question("opportunities"))
+        put("root_causes", per_question("root_causes"))
+    elif key == "recommend":
+        put("actions", per_question("recommendations"))
+        put("monitoring_hooks", per_question("monitoring_hooks"))
+    elif key == "monitor":
+        put("active_alerts", count(result.get("active_alerts")))
+        put("events", count(result.get("events")))
+    elif key == "report":
+        put("narrative_chars", len(str(result.get("narrative") or "")))
+    return out
 
 
 # ----------------------------------------------------------------- checkpoint
@@ -909,6 +1003,12 @@ def checkpoint(session: Session, key: str) -> JsonDict:
         "status": entry.get("status", "pending"),
         "optional": key in OPTIONAL_STAGES,
         "summary": entry.get("summary") or "",
+        # How this agent performed, alongside what it found. Present on every
+        # checkpoint so a caller never has to special-case a stage to draw it.
+        "started_at": entry.get("started_at"),
+        "finished_at": entry.get("finished_at"),
+        "duration_ms": entry.get("duration_ms"),
+        "metrics": entry.get("metrics") or {},
         "details": stage_details(key, result),
         "artifacts": {name: session.get_artifact(name)
                       for name, record in session.state["artifacts"].items()
