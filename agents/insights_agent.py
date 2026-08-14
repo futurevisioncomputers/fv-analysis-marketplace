@@ -23,7 +23,7 @@ Pure and deterministic: works off the JSON contracts, never reads the dataframe.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from . import llm_client
 
@@ -49,7 +49,15 @@ LOWER_IS_BETTER = ("dropout_rate", "pending_fee", "overdue_fee", "certificate_de
 
 # Materiality floor for calling a breakdown gap a "finding".
 RATE_GAP_FLOOR = 0.05         # 5 percentage points for proportions
+VALUE_GAP_FLOOR = 0.10        # 10% away from the average, for money and counts
 OPPORTUNITY_RATIO = 1.2       # segment >= 1.2x baseline = an opportunity
+
+# A segment smaller than this is never promoted into a finding, a risk or an
+# opportunity. It still appears in the breakdown table — the data is real — but
+# one row is not evidence of anything, and a headline written from it reads as
+# authoritative to someone who cannot see the n. Same floor as
+# `statistics.MIN_SEGMENT_N` and the Analyst's segments, for the same reason.
+MIN_FINDING_N = 30
 
 
 class InsightsAgent:
@@ -202,24 +210,34 @@ class InsightsAgent:
 
     def _key_findings(self, result, vp, metric, kind) -> List[JsonDict]:
         findings: List[JsonDict] = []
-        baseline = (result.get("headline_number") or {}).get("value", 0)
         breakdowns = result.get("breakdowns") or []
 
-        # Material breakdown gaps (biggest deviation per direction).
-        ranked = sorted(
-            breakdowns, key=lambda b: abs(b.get("value", 0) - baseline), reverse=True
-        )
-        for b in ranked[:3]:
-            gap = b.get("value", 0) - baseline
-            if not self._material(kind, gap):
+        # Only segments large enough to carry a claim, ranked by how far they
+        # sit from the institute on a comparable scale.
+        scored = []
+        for b in breakdowns:
+            if not self._big_enough(b):
+                continue
+            pair = self._comparable(b, result, kind)
+            if pair is None:
+                continue
+            seg_stat, base_stat = pair
+            scored.append((abs(seg_stat - base_stat), b, seg_stat, base_stat))
+        scored.sort(key=lambda row: row[0], reverse=True)
+
+        for _, b, seg_stat, base_stat in scored[:3]:
+            gap = seg_stat - base_stat
+            if not self._material(kind, gap, base_stat):
                 continue
             dim = b.get("dimension", "segment")
             seg = str(b.get("segment", "")).split("=", 1)[-1]
+            averaged = "" if kind == "rate" else " per student, on average,"
             findings.append({
                 "finding": (
-                    f"{seg} shows {self._pretty(metric)} of "
-                    f"{self._fmt(kind, b.get('value'))} vs {self._fmt(kind, baseline)} "
-                    f"overall ({self._signed(kind, gap)})."
+                    f"{seg} shows{averaged} {self._pretty(metric)} of "
+                    f"{self._fmt(kind, seg_stat)} vs {self._fmt(kind, base_stat)} "
+                    f"overall ({self._signed(kind, gap)}), across "
+                    f"{int(b.get('n') or 0):,} record(s)."
                 ),
                 "business_area": self._area(dim),
                 "confidence": self._confidence_from_n(b.get("n", 0)),
@@ -284,12 +302,20 @@ class InsightsAgent:
 
     def _opportunities(self, result, metric, kind) -> List[JsonDict]:
         opps: List[JsonDict] = []
-        baseline = (result.get("headline_number") or {}).get("value", 0)
-        if not baseline:
-            return opps
         for b in result.get("breakdowns") or []:
-            val = b.get("value", 0)
-            ratio = val / baseline if baseline else 0
+            # Same two rules as findings: large enough to name, and compared
+            # like with like. The old ratio was segment-sum over TOTAL-sum,
+            # which is below 1 for every segment — so a money metric could
+            # never produce an opportunity at all.
+            if not self._big_enough(b):
+                continue
+            pair = self._comparable(b, result, kind)
+            if pair is None:
+                continue
+            seg_stat, base_stat = pair
+            if not base_stat:
+                continue
+            ratio = seg_stat / base_stat
             better = (ratio <= (1 / OPPORTUNITY_RATIO)) if metric in LOWER_IS_BETTER \
                 else (ratio >= OPPORTUNITY_RATIO)
             if not better:
@@ -325,20 +351,38 @@ class InsightsAgent:
                     "affected_area": self._area_for_metric(metric),
                     "evidence_refs": [f"comparisons[{i}]"],
                 })
-        # Underperforming significant segment.
-        baseline = (result.get("headline_number") or {}).get("value", 0)
+        # Underperforming segment — big enough to name, and compared on a
+        # scale where underperformance is a real finding rather than the
+        # arithmetic fact that a part is smaller than the whole.
         breakdowns = result.get("breakdowns") or []
         worst = None
+        worst_gap = 0.0
+        worst_base = 0.0
         for b in breakdowns:
-            gap = b.get("value", 0) - baseline
-            if self._direction(metric, gap) == "negative" and self._material(kind, gap):
-                if worst is None or abs(gap) > abs(worst.get("value", 0) - baseline):
-                    worst = b
+            if not self._big_enough(b):
+                continue
+            pair = self._comparable(b, result, kind)
+            if pair is None:
+                continue
+            seg_stat, base_stat = pair
+            gap = seg_stat - base_stat
+            if self._direction(metric, gap) != "negative":
+                continue
+            if not self._material(kind, gap, base_stat):
+                continue
+            if worst is None or abs(gap) > abs(worst_gap):
+                worst, worst_gap, worst_base = b, gap, base_stat
         if worst is not None:
             seg = str(worst.get("segment", "")).split("=", 1)[-1]
+            # Severity reads a proportion either way: percentage points for a
+            # rate, share of the institute average for money and counts.
+            relative = (abs(worst_gap) if kind == "rate"
+                        else (abs(worst_gap) / abs(worst_base) if worst_base else 0.0))
             risks.append({
-                "risk": f"{seg} materially underperforms on {self._pretty(metric)}",
-                "severity": self._severity(abs(worst.get("value", 0) - baseline)),
+                "risk": (f"{seg} materially underperforms on "
+                         f"{self._pretty(metric)} "
+                         f"({int(worst.get('n') or 0):,} records)"),
+                "severity": self._severity(relative),
                 "affected_area": self._area(worst.get("dimension", "")),
                 "evidence_refs": [self._breakdown_ref(breakdowns, worst)],
             })
@@ -563,10 +607,46 @@ class InsightsAgent:
             return "money"
         return "count"
 
-    def _material(self, kind: str, gap: float) -> bool:
+    @staticmethod
+    def _comparable(b: Mapping[str, Any], result: Mapping[str, Any],
+                    kind: str) -> Optional[Tuple[float, float]]:
+        """(segment statistic, overall statistic) on the SAME scale, or None.
+
+        A rate is already comparable: a segment's rate against the overall rate
+        is a real statement. A sum is not. `headline_number.value` is the total
+        across every row, so `segment_sum - total_sum` is negative for every
+        segment that is not the whole institute — which made every money
+        finding read as underperformance, including the top counsellor's.
+
+        For sums and counts the comparison is therefore per-row: the segment's
+        average against the institute's average. Returns None when either side
+        has no rows to average over.
+        """
+        head = result.get("headline_number") or {}
+        base_value = head.get("value")
+        if base_value is None:
+            return None
+        if kind == "rate":
+            return float(b.get("value") or 0.0), float(base_value)
+        seg_n, base_n = int(b.get("n") or 0), int(head.get("n") or 0)
+        if seg_n <= 0 or base_n <= 0:
+            return None
+        return float(b.get("value") or 0.0) / seg_n, float(base_value) / base_n
+
+    def _material(self, kind: str, gap: float, baseline: float = 0.0) -> bool:
         if kind == "rate":
             return abs(gap) >= RATE_GAP_FLOOR
-        return abs(gap) > 0  # any nonzero gap for counts/money
+        # Relative to the average, not "any nonzero difference" — on a money
+        # metric every segment differs from the mean by some amount, so an
+        # absolute test flags all of them.
+        if not baseline:
+            return abs(gap) > 0
+        return abs(gap) / abs(baseline) >= VALUE_GAP_FLOOR
+
+    @staticmethod
+    def _big_enough(b: Mapping[str, Any]) -> bool:
+        """Whether a breakdown row may be promoted into a narrative claim."""
+        return int(b.get("n") or 0) >= MIN_FINDING_N
 
     def _direction(self, metric: str, delta: float) -> str:
         if abs(delta) < 1e-9:
