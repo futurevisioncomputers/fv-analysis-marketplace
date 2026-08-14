@@ -390,6 +390,43 @@ COMPLETION_BY_SOURCE = (
     ("timetable", "active"),
 )
 
+# The same lifecycle, written as a COLUMN instead of as sheet membership.
+#
+# Sheet membership was the only label the institute's original timetable
+# workbook carried, so `_derive_completion_status` read the source name. Once
+# the sheets are consolidated onto a student master the label becomes an
+# ordinary column, and reading it is strictly better: it is per-row, it
+# survives a join, and one sheet can then hold every lifecycle state.
+#
+# `unknown` maps to None deliberately. A student whose status nobody recorded
+# is not active — treating "we don't know" as "still learning" would quietly
+# inflate the completion denominator with people who left years ago.
+LIFECYCLE_VALUES = {
+    "course completed": "completed",
+    "completed": "completed",
+    "complete": "completed",
+    "finished": "completed",
+    "currently learning": "active",
+    "learning": "active",
+    "ongoing": "active",
+    "active": "active",
+    "running": "active",
+    "not coming": "not_coming",
+    "not_coming": "not_coming",
+    "discontinued": "not_coming",
+    "dropped": "not_coming",
+    "left": "not_coming",
+    "not to entertain": "not_to_entertain",
+    "not to entertrain": "not_to_entertain",   # the institute's own spelling
+    "unknown": None,
+}
+
+# How much of a column must speak this vocabulary before it is read as the
+# lifecycle column, and how many distinct states it must show. A column that
+# is 100% one value labels nothing and is more likely a coincidence.
+LIFECYCLE_MATCH_FLOOR = 0.60
+LIFECYCLE_MIN_STATES = 2
+
 # Attributes the institute changes mid-enrollment: a student moves branch,
 # switches batch timing, or is handed to a different tutor, and the sheet is
 # overwritten in place. There is no history column, so each of these holds the
@@ -909,6 +946,11 @@ class DataEngineerAgent:
         in the data, so it is captured as `completion_status`. No-op when the
         source name matches nothing (no label invented).
         """
+        # A lifecycle COLUMN beats sheet membership when both exist: it is
+        # per-row rather than per-sheet, so one consolidated master can carry
+        # every state at once.
+        if self._derive_completion_from_column(df, issues):
+            return
         if not source_name:
             return
         lowered = source_name.lower()
@@ -925,7 +967,78 @@ class DataEngineerAgent:
                 # sheet whose name resolved a label, so no row is guessed.
                 df["is_completed"] = label == "completed"
                 df["is_not_coming"] = label == "not_coming"
+                self._derive_dropped(df)
                 return
+
+    @staticmethod
+    def _derive_completion_from_column(
+        df: pd.DataFrame, issues: List[str]
+    ) -> bool:
+        """Read the lifecycle from a column that speaks it. True when found.
+
+        Detection is by VALUES, not by header. The institute's own sheets use
+        `status` for the fee state on one tab and the lifecycle on another, so
+        a header match would pick the wrong column about half the time; a
+        column holding "Course Completed" and "Not Coming" can only be one
+        thing.
+        """
+        best: Optional[Tuple[str, pd.Series, float]] = None
+        for col in df.columns:
+            if pd.api.types.is_numeric_dtype(df[col]):
+                continue
+            values = df[col].astype("string").str.strip().str.lower()
+            present = values.dropna()
+            if present.empty:
+                continue
+            mapped = present.map(
+                lambda v: LIFECYCLE_VALUES[v] if v in LIFECYCLE_VALUES else "")
+            known = mapped != ""
+            # `unknown` counts as vocabulary (it is a recognized answer) but
+            # labels nothing, so it supports detection and not the label.
+            recognized = present.map(lambda v: v in LIFECYCLE_VALUES)
+            share = float(recognized.mean())
+            states = mapped[known].nunique()
+            if share < LIFECYCLE_MATCH_FLOOR or states < LIFECYCLE_MIN_STATES:
+                continue
+            if best is None or share > best[2]:
+                best = (col, values, share)
+
+        if best is None:
+            return False
+        col, values, share = best
+        labels = values.map(
+            lambda v: LIFECYCLE_VALUES.get(v) if isinstance(v, str) else None)
+        df["completion_status"] = labels
+        df["is_completed"] = labels.eq("completed")
+        df["is_not_coming"] = labels.eq("not_coming")
+        DataEngineerAgent._derive_dropped(df)
+        counts = labels.value_counts(dropna=False).to_dict()
+        issues.append(
+            f"Derived completion_status per row from column '{col}' "
+            f"({share:.0%} of values recognized): "
+            + ", ".join(f"{k or 'unlabelled'}={v}" for k, v in sorted(
+                counts.items(), key=lambda kv: str(kv[0])))
+        )
+        return True
+
+    @staticmethod
+    def _derive_dropped(df: pd.DataFrame) -> None:
+        """`is_dropped` — left before finishing, by EITHER available signal.
+
+        `is_cancelled` only ever sees a cancellation someone typed into a name
+        ("Ritik Shah (admission cancelled)"), so on a sheet where leaving is
+        recorded in a status column instead it reports almost nobody. Reading
+        both together is what makes a dropout rate mean "left before
+        completing" rather than "was annotated a particular way".
+        """
+        parts = [df[c] for c in ("is_cancelled", "is_not_coming")
+                 if c in df.columns]
+        if not parts:
+            return
+        dropped = parts[0].fillna(False).astype(bool)
+        for extra in parts[1:]:
+            dropped = dropped | extra.fillna(False).astype(bool)
+        df["is_dropped"] = dropped
 
     @staticmethod
     def _flag_mutable_attributes(
@@ -1751,6 +1864,11 @@ class DataEngineerAgent:
         df[col] = pd.Series(cleaned_vals, index=df.index, dtype="string")
         if n_marked:
             df["is_cancelled"] = [s in ("cancelled", "refunded") for s in statuses]
+            # Build the union now as well: a sheet may carry typed
+            # cancellations and no lifecycle column at all, and the capability
+            # check promises `dropout_rate` on that basis alone. The completion
+            # path rebuilds it afterwards once `is_not_coming` also exists.
+            self._derive_dropped(df)
             issues.append(
                 f"Derived enrollment_status from name markers for {n_marked} "
                 f"row(s); markers stripped before hashing"

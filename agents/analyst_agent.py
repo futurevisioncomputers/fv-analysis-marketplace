@@ -72,7 +72,12 @@ METRIC_SPECS: Dict[str, JsonDict] = {
         "denom_role": "amount",
     },
     # courses
-    "dropout_rate": {"kind": "rate", "flag": "is_cancelled"},
+    # A dropout is anyone who left before completing, by either signal the
+    # sheets carry: a cancellation typed into the name, or a lifecycle column
+    # saying Not Coming. `is_cancelled` alone measured a typing convention —
+    # on a status-column sheet it reported 0.4% while 25 students sat in Not
+    # Coming. The Data Engineer builds `is_dropped` from whichever exist.
+    "dropout_rate": {"kind": "rate", "flag": "is_dropped"},
     "completion_rate": {"kind": "rate", "flag": "is_completed"},
     # Two different questions, deliberately both kept.
     # `not_coming_rate` is operational: who stopped attending, from tab

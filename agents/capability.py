@@ -64,11 +64,16 @@ METRIC_REQUIREMENTS: Dict[str, JsonDict] = {
     "collection_efficiency": {"any_of": [["paid", "amount"], ["amount", "pending"]],
                               "derives": "amount_collected"},
     # lifecycle
-    "dropout_rate": {"any_of": [["cancel_marker"]], "derives": "is_cancelled",
-                     "caveat": "counts only enrollments whose cancellation was "
-                               "typed into the name or status column"},
-    "completion_rate": {"any_of": [["completion_source"]], "derives": "is_completed"},
-    "not_coming_rate": {"any_of": [["completion_source"]], "derives": "is_not_coming"},
+    "dropout_rate": {"any_of": [["lifecycle_column"], ["completion_source"],
+                                ["cancel_marker"]],
+                     "derives": "is_dropped",
+                     "caveat": "a dropout is anyone who left before completing "
+                               "— a cancellation typed into a name, or a "
+                               "lifecycle column reading Not Coming"},
+    "completion_rate": {"any_of": [["lifecycle_column"], ["completion_source"]],
+                        "derives": "is_completed"},
+    "not_coming_rate": {"any_of": [["lifecycle_column"], ["completion_source"]],
+                        "derives": "is_not_coming"},
     # Churn needs three things at once — which tab the student sits in, when
     # the course started, and how long it runs — and they live on different
     # sheets. Listing all three means stage 1 asks for the missing file instead
@@ -127,6 +132,10 @@ ROLE_SOURCES: Dict[str, str] = {
     "completion_source": "the Student_Time_Table tabs "
                          "(Main_data / Course_Completed / Not_Coming / "
                          "NOT TO ENTERTRAIN) — membership is the label",
+    "lifecycle_column": "a column holding the lifecycle per student "
+                        "(Course Completed / Currently Learning / Not Coming). "
+                        "One consolidated sheet with this column replaces the "
+                        "four timetable tabs",
     "course_duration": "a sheet carrying 'Course Duration (IN DAYS)'. If no "
                        "sheet records it, pass a duration-per-course table "
                        "instead — churn cannot be dated without one",
@@ -251,10 +260,28 @@ def _probe_repeat_person(path, sheet_name, roles) -> bool:
     return bool(keys[names != ""].duplicated().any())
 
 
+def _probe_lifecycle_column(
+    path: str, sheet: Optional[str], roles: Mapping[str, str]
+) -> bool:
+    """Whether a column on this sheet holds the student lifecycle.
+
+    Runs the Data Engineer's own detector on a sample, so stage 1 promises
+    exactly what stage 2 will find — the alternative is a checkpoint saying
+    completion rate is available and an Analyst that then cannot compute it.
+    """
+    from .data_engineer_agent import DataEngineerAgent
+
+    frame = _sample(path, sheet)
+    if frame is None or frame.empty:
+        return False
+    return DataEngineerAgent._derive_completion_from_column(frame.copy(), [])
+
+
 VALUE_PROBES = {
     "cancel_marker": _probe_cancel_marker,
     "stale_enquiry": _probe_stale_enquiry,
     "repeat_person": _probe_repeat_person,
+    "lifecycle_column": _probe_lifecycle_column,
 }
 
 
