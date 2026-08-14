@@ -973,6 +973,145 @@ class DataEngineerAgent:
                 )
         issues.append(note)
 
+    def _apply_reporting_taxonomies(
+        self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
+    ) -> None:
+        """Group course, lead source and occupation the way the institute reports.
+
+        From an operator's corrections log: they exported a generated audit,
+        hand-fixed the groupings, and recorded the rules behind the fixes. Three
+        groupings resulted, and each collapses distinctions the institute does
+        not act on — referral-by-friend against referral-by-old-student,
+        self-employed against salaried.
+
+        **The original value is never destroyed.** Each grouped column keeps its
+        raw text in `<col>_raw`, because these are the institute's current
+        reporting policy rather than facts about the world, and the next
+        operator may want the finer split back. Reversible by construction.
+
+        An unmatched value becomes NaN and is COUNTED, not swept into an
+        "Other" bucket. A catch-all bucket makes a taxonomy look complete while
+        hiding exactly the vocabulary the rules have not learned yet.
+        """
+        course_col = roles.get("course")
+        if course_col and course_col in df.columns:
+            family = df[course_col].map(
+                lambda v: canonical_maps.canonicalize_course(v)[0])
+            category = [
+                canonical_maps.canonicalize_course_category(raw, fam)
+                for raw, fam in zip(df[course_col], family)
+            ]
+            category = pd.Series(category, index=df.index, dtype="object")
+            if category.notna().any():
+                existing = roles.get("course_category")
+                # The sheet's own category column, when present, is what the
+                # institute typed; keep it and add the derived one beside it
+                # rather than overwriting a human's classification.
+                target = ("course_category_derived"
+                          if existing and existing in df.columns
+                          else "course_category_derived")
+                df[target] = category
+                roles.setdefault("course_category_derived", target)
+                self._report_taxonomy(
+                    "course category", course_col, target, category, issues,
+                    raw=df[course_col])
+
+        for role, fn, label in (
+            ("source", canonical_maps.canonicalize_lead_source, "lead source"),
+            ("occupation", canonical_maps.canonicalize_occupation, "occupation"),
+        ):
+            col = roles.get(role)
+            if not col or col not in df.columns:
+                continue
+            if pd.api.types.is_numeric_dtype(df[col]):
+                continue
+            bucketed = df[col].map(fn)
+            if not bucketed.notna().any():
+                continue
+            raw_values = df[col]
+            df[f"{col}_raw"] = raw_values
+            df[col] = bucketed
+            self._report_taxonomy(label, col, col, bucketed, issues,
+                                  raw_kept=f"{col}_raw", raw=raw_values)
+            if role == "source":
+                self._report_lead_source_assumptions(raw_values, issues)
+
+    @staticmethod
+    def _report_lead_source_assumptions(
+        raw: pd.Series, issues: List[str]
+    ) -> None:
+        """Say how much of the lead-source column rests on an assumption.
+
+        Two of the three buckets can be reached without the cell saying so: a
+        blank read as Walk-in, and free text read as a referrer's name. Both
+        are defensible and both are guesses, so the share is stated and the
+        free-text values are listed — that list is also how the rules learn a
+        channel they do not yet know.
+        """
+        bases = raw.map(lambda v: canonical_maps.lead_source_basis(v)[1])
+        blank = int((bases == "blank").sum())
+        named = int((bases == "named-referrer").sum())
+        if not (blank or named):
+            return
+        parts = []
+        if blank:
+            parts.append(f"{blank} blank cell(s) read as Walk-in")
+        if named:
+            # Counted, never quoted: these cells hold the names of real people
+            # who referred someone, and a quality note travels into reports.
+            distinct = len({str(v).strip().lower() for v, b in zip(raw, bases)
+                            if b == "named-referrer"})
+            parts.append(
+                f"{named} row(s) ({distinct} distinct value(s)) naming a "
+                f"person or organisation read as Referral")
+        issues.append(
+            "lead source: " + "; ".join(parts)
+            + ". Both are assumptions, not what the cell said. Read the "
+              "distinct values in '<col>_raw' if a channel looks missing."
+        )
+
+    @staticmethod
+    def _report_taxonomy(label: str, source_col: str, target_col: str,
+                         values: pd.Series, issues: List[str],
+                         raw_kept: Optional[str] = None,
+                         raw: Optional[pd.Series] = None) -> None:
+        counts = values.value_counts().to_dict()
+        unmatched = int(values.isna().sum())
+        note = (
+            f"{label} grouped into {len(counts)} reporting bucket(s) from "
+            f"'{source_col}' → '{target_col}': "
+            + ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+        )
+        if raw_kept:
+            note += f". Original kept in '{raw_kept}'"
+        if unmatched:
+            # An empty input and a value no rule covers both come out blank,
+            # and they say different things: one is a field nobody filled, the
+            # other is vocabulary these rules have not learned. Only the second
+            # is a reason to add a rule, so they are never reported as one
+            # number.
+            empty = 0
+            if raw is not None:
+                blank_in = raw.isna() | (
+                    raw.astype(str).str.strip().str.lower().isin(["", "nan"]))
+                empty = int((values.isna() & blank_in).sum())
+            unlearned = unmatched - empty
+            if empty:
+                note += f". {empty} row(s) had nothing recorded to group"
+            if unlearned:
+                note += (f". {unlearned} row(s) matched no rule and are left "
+                         f"blank rather than bucketed — they are the "
+                         f"vocabulary the rules have not learned")
+        # `Other` is a real bucket in the institute's closed sets, so it cannot
+        # be reported as blank. It is still the place unrecognized values land,
+        # so say how big it is: a growing Other is a gap in these rules, not a
+        # segment worth acting on.
+        other = int(counts.get("Other", 0))
+        if other:
+            note += (f". 'Other' holds {other} row(s) — the closed set's "
+                     f"catch-all; check it before reading it as a segment")
+        issues.append(note + ".")
+
     def _derive_churn_labels(
         self, df: pd.DataFrame, roles: Mapping[str, str], issues: List[str]
     ) -> Optional[JsonDict]:
@@ -1874,6 +2013,8 @@ class DataEngineerAgent:
                     f"{', '.join(names[:5])}. Kept as-is and flagged in "
                     f"is_known_branch — these are not sites, and no locality "
                     f"mapping is known for them.")
+
+        self._apply_reporting_taxonomies(df, roles, issues)
 
         course_col = roles.get("course")
         if course_col and course_col in df.columns and not pd.api.types.is_numeric_dtype(df[course_col]):

@@ -32,6 +32,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 import numpy as np
 import pandas as pd
 
+from . import canonical_maps
+
 
 JsonDict = Dict[str, Any]
 
@@ -454,12 +456,19 @@ class AnalystAgent:
         roles: Mapping[str, str],
         df: pd.DataFrame,
     ) -> Dict[str, str]:
-        """role -> column for brief dimensions that exist in the canonical df."""
+        """role -> column for brief dimensions that exist in the canonical df.
+
+        A role with a coarser reporting column breaks down by that one: the
+        institute reports course by its 8 categories, not by ~40 canonical
+        families, and a 40-level breakdown is unreadable either way. Two roles
+        that resolve to the same column collapse to one entry rather than
+        producing the identical table twice.
+        """
         wanted = brief.get("dimensions") or []
         out: Dict[str, str] = {}
         for role in wanted:
-            col = roles.get(role)
-            if col and col in df.columns:
+            col = canonical_maps.preferred_reporting_column(role, roles, df.columns)
+            if col and col not in out.values():
                 out[role] = col
             if len(out) >= MAX_BREAKDOWN_DIMENSIONS:
                 break

@@ -210,6 +210,304 @@ _FAMILY_RULES: List[Tuple[re.Pattern, str]] = [
 ]
 
 
+# --------------------------------------------------- reporting taxonomies
+#
+# Three coarse groupings the institute reports on, taken from an operator's
+# corrections log (2026-08-14) after they hand-fixed a generated audit.
+#
+# All three are POLICY, not fact: they encode which distinctions the institute
+# finds useful, and a different operator could want them back. So each one is
+# applied as the reporting default while the finer original value is preserved
+# in a `<col>_raw` column — the grouping is reversible, and no run has to
+# re-derive it from a spreadsheet by hand again.
+
+# The institute's closed set of reporting categories, fixed by the operator
+# (2026-08-14). Closed means a value outside it is a bug in these rules, not a
+# new category: every course resolves to one of these eight, with `Other` as
+# the named landing place for anything the rules do not cover. That is a
+# deliberate change from the earlier design, which left unmatched courses
+# blank — the operator wants one bounded column they can group by, so the
+# unmatched count is reported in the quality notes instead of by a NaN.
+COURSE_CATEGORY_BUCKETS = (
+    "Foundational/School",
+    "Programming & Development",
+    "Office & Productivity",
+    "Digital Marketing",
+    "Data & Analytics",
+    "Accounting & Finance",
+    "Design & Creative",
+    "Other",
+)
+
+# Family -> reporting category. `AI & Emerging Tech` is deliberately absent:
+# the operator merged it into Programming & Development, leaving it empty.
+COURSE_CATEGORIES = {
+    # Programming & Development — including the theory courses that used to
+    # fall through to "Other" because no keyword matched them.
+    "python programming": "Programming & Development",
+    "java programming": "Programming & Development",
+    "c programming": "Programming & Development",
+    "c++ programming": "Programming & Development",
+    "c & c++ programming": "Programming & Development",
+    "r programming": "Programming & Development",
+    "scratch programming": "Programming & Development",
+    "programming logic": "Programming & Development",          # "Psudo Code"
+    "data structures & algorithms": "Programming & Development",
+    "web development": "Programming & Development",
+    "full stack development": "Programming & Development",
+    "front end development": "Programming & Development",
+    "wordpress": "Programming & Development",
+    "agentic ai & automation": "Programming & Development",
+    "adv certificate: python & generative ai": "Programming & Development",
+    # Design & Creative — video/motion work was landing in "Other".
+    "graphic designing": "Design & Creative",
+    "ui ux designing": "Design & Creative",
+    "web designing": "Design & Creative",
+    # Digital Marketing — every certificate spelling of it, which the old
+    # keyword list missed one way or another.
+    "digital marketing & seo": "Digital Marketing",
+    "social media marketing": "Digital Marketing",
+    "ecommerce & seo": "Digital Marketing",
+    "adv certificate: digital designing & marketing": "Digital Marketing",
+    # Data & Analytics
+    "data analysis": "Data & Analytics",
+    "data science & ai": "Data & Analytics",
+    "business analytics": "Data & Analytics",
+    "adv certificate: data analytics & data science": "Data & Analytics",
+    # SQL is sold as a programming skill here, and the operator's audit files
+    # classify it that way (3 of the 4 SQL rows). Power BI is NOT here: they
+    # put it with Office & Productivity, consistently, across every spelling.
+    "sql": "Programming & Development",
+    # Accounting & Finance — split out of Office & Productivity by the
+    # operator. Tally / GST / Zoho Books is a distinct buyer from someone
+    # buying Excel and Word, and the institute reports on them separately.
+    # Financial modelling comes here rather than staying in Data & Analytics:
+    # its subject is finance, and the split is by subject, not by the tool.
+    "accounting": "Accounting & Finance",
+    "financial modelling": "Accounting & Finance",
+    # Office & Productivity
+    "advanced excel": "Office & Productivity",
+    "power bi": "Office & Productivity",
+    "office & generative ai": "Office & Productivity",
+    "computer basics": "Office & Productivity",
+    "combo course": "Office & Productivity",
+    # Foundational/School — school tutoring ONLY. Any Computer Basics variant
+    # was moved out of here by the operator.
+    "school course": "Foundational/School",
+}
+
+# A bundle is classified by its anchor, not by whichever subject happens to
+# come second: "Computer Basics & Graphic Designing" is an Office &
+# Productivity sale, and "Professional Office & Generative AI Essentials,
+# Canva" is one too — Canva is a tool thrown into an office programme, not a
+# design enrolment. Checked against the RAW course string, before family
+# matching, because the family rules resolve such a string to its second
+# subject.
+#
+# Ordered: the school anchor is tested first. "Kids Course" reads as computer
+# basics to the family rules, but the operator files it under school tutoring,
+# which is where a parent-facing report would look for it.
+_CATEGORY_ANCHORS: List[Tuple[re.Pattern, str]] = [
+    (re.compile(r"\bkids?\b", re.IGNORECASE), "Foundational/School"),
+    (re.compile(r"computer\s*basic|professional\s*office", re.IGNORECASE),
+     "Office & Productivity"),
+]
+
+# Lead source, collapsed to the three buckets the institute acts on. The
+# operator's judgement: old-student vs friend vs family vs relative is not an
+# operational difference — referral or not is.
+#
+# There is no Print/Outdoor bucket. The operator fixed the set at three, and
+# print/outdoor placements are local-awareness spend that produces someone at
+# the counter — the same reasoning that already put hoardings and banners in
+# Walk-in — so newspaper, pamphlet and radio land there too. Their raw text
+# survives in `<col>_raw`, so pulling print back out later costs nothing.
+_LEAD_SOURCE_RULES: List[Tuple[re.Pattern, str]] = [
+    # Hoarding and banners drive people through the door rather than being a
+    # separately tracked awareness channel, so they read as Walk-in.
+    (re.compile(r"hoarding|banner|pamphlet|poster|\bwalk\s*\w*|walkin|"
+                r"\bvisit|passing by|near\s*by|nearby|news\s*paper|newspaper|"
+                r"\bprint\b|magazine|radio|\btv\b"), "Walk-in"),
+    # Misspellings taken from the live sheet: "Frieds", "Refrence", "Old <name>
+    # Student", "was a student", "Sibling (…)". A referrer's own name usually
+    # sits in the cell, which the fallback below handles.
+    (re.compile(r"old\s*\w*\s*student|ex\s*student|was a student|frie?n?ds?\b|"
+                r"family|relative|referr?al|refer|refre|word of mouth|known|"
+                r"neighbou?r|brother|sister|sibling|cousin|parent|colleague|"
+                r"old\s*enquiry"), "Referral"),
+    (re.compile(r"goog\w*|internet|online|social|facebook|instagram|insta\b|"
+                r"youtube|whatsapp|website|\bweb\b|\bnet\b|indiamart|justdial|"
+                r"just dial|\bsms\b|\bad(?:vertisement|vert)?\b|\bads\b|"
+                r"linkedin|\bseo\b"), "Online/Google/Social"),
+]
+
+# Nothing was recorded at all.
+_BLANK_VALUES = {"", "na", "n.a", "n/a", "none", "-", "nil", "nan"}
+
+# The form's own catch-all answer. Distinct from blank: the person answered,
+# and the answer was "none of these". It is NOT read as a walk-in — that would
+# assert a channel on no evidence — and not as Referral either, whatever the
+# old combined "Other/Referral" bucket happened to contain.
+_EXPLICIT_OTHER = {"other", "others", "unknown"}
+LEAD_SOURCE_BUCKETS = ("Online/Google/Social", "Referral", "Walk-in")
+
+# Occupation. Self-employed vs salaried was judged not useful, so both are one
+# working-adult bucket; the free-text trades that used to fall to "Other" join
+# it, since a lawyer and a teacher are working adults by any reading.
+#
+# Four buckets, closed by the operator. Retired and unemployed had their own
+# buckets here and no longer do: neither is a segment the institute markets to
+# differently, and both are tiny. They fall to Other, which is where a reader
+# of the closed set would look for them.
+OCCUPATION_BUCKETS = ("Student", "Business / Job", "Housewife", "Other")
+
+_OCCUPATION_RULES: List[Tuple[re.Pattern, str]] = [
+    (re.compile(r"house\s*wife|home\s*maker|housewife"), "Housewife"),
+    # "School" is a school-going enquirer, not an occupation called school.
+    (re.compile(r"\bstudent\b|\bstudying\b|\bschool\b|\bcollege\b|"
+                r"\b\d{1,2}\s*th\b|\bpursuing\b"), "Student"),
+    (re.compile(r"\bretired\b"), "Other"),
+    (re.compile(r"\bunemployed\b|not working|no\s*job"), "Other"),
+    (re.compile(r"business|\bjob\b|service|\bwork(?:ing)?\b|teacher|tutor|"
+                r"lawyer|advocate|doctor|engineer|accountant|\bca\b|event "
+                r"planner|diamond|shop|trader|manager|employee|self\s*employ"),
+     "Business / Job"),
+]
+
+# A bare "Freelance" with no stated field stays Other. A qualified one
+# ("Freelancing as graphic designer") is a working adult. The operator drew
+# that line explicitly, so the qualifier is what decides.
+_BARE_FREELANCE_RE = re.compile(r"^\s*free\s*lanc\w*\s*$", re.IGNORECASE)
+_FREELANCE_RE = re.compile(r"free\s*lanc", re.IGNORECASE)
+
+
+# Roles whose reporting column is a coarser derived one. When a breakdown or a
+# crossing asks for the role on the left, it gets the column on the right if
+# the cleaner produced it.
+#
+# This is what makes the taxonomies show up in ANALYSIS and not only in the
+# cleaned CSV. Crossing by raw course means ~40 families against a 12-level
+# cap, so most of the sheet lands in an "other levels" remainder and the grid
+# says little; crossing by the 8 categories is the breakdown the institute
+# actually reports. The fine column is still there and still reachable — pass
+# its literal header instead of the role name.
+REPORTING_ROLE_PREFERENCE = {
+    "course": "course_category_derived",
+    "course_category": "course_category_derived",
+}
+
+
+def preferred_reporting_column(
+    role: str, roles, columns
+) -> Optional[str]:
+    """The column a role should break down by, honouring the coarse default.
+
+    Falls back to the role's own column when the derived one is absent, so a
+    source the taxonomies never ran on behaves exactly as before.
+    """
+    preferred = REPORTING_ROLE_PREFERENCE.get(role)
+    if preferred:
+        if preferred in columns:
+            return preferred
+        mapped = roles.get(preferred)
+        if mapped and mapped in columns:
+            return mapped
+    col = roles.get(role)
+    return col if col and col in columns else None
+
+
+def canonicalize_course_category(
+    raw_course: Optional[str], family: Optional[str] = None
+) -> Optional[str]:
+    """The reporting category for a course — one of COURSE_CATEGORY_BUCKETS.
+
+    Args:
+        raw_course: the course string as typed. Needed as well as the family
+            because the Computer Basics rule reads the bundle, and the family
+            has already resolved such a string to its second subject.
+        family: the output of `canonicalize_course`; derived when omitted.
+
+    A course that no rule covers becomes "Other" — the operator fixed the set
+    of categories, and a bounded column is what they group by. It is still
+    counted in the quality notes, so an "Other" that grows is visible as a gap
+    in these rules rather than passing for a real segment.
+
+    None means no course was recorded at all (blank cell), which is a different
+    statement from "a course we could not classify" and is kept separate.
+    """
+    if not isinstance(raw_course, str) or not raw_course.strip():
+        if not isinstance(family, str) or not family.strip():
+            return None
+    if isinstance(raw_course, str):
+        for rx, anchored in _CATEGORY_ANCHORS:
+            if rx.search(raw_course):
+                return anchored
+    if family is None and isinstance(raw_course, str):
+        family, _ = canonicalize_course(raw_course)
+    if not isinstance(family, str):
+        return None
+    return COURSE_CATEGORIES.get(family.strip().lower(), "Other")
+
+
+def lead_source_basis(value: Optional[str]) -> Tuple[Optional[str], str]:
+    """(bucket, how it was decided) — so the cleaner can report the weak ones.
+
+    The basis matters because two of the four paths are assumptions rather
+    than readings: a blank cell assumed to be a walk-in, and free text assumed
+    to be a referrer's name. Both are reported, so an operator sees how much
+    of a bucket rests on an assumption.
+    """
+    if not isinstance(value, str):
+        # A blank cell (NaN/None) is the case the operator ruled on: nobody
+        # fills the field for someone standing at the counter.
+        return "Walk-in", "blank"
+    text = re.sub(r"\s+", " ", value).strip().lower()
+    if text in _BLANK_VALUES:
+        return "Walk-in", "blank"
+    if text in _EXPLICIT_OTHER:
+        # The person answered "none of these". That is evidence of no channel,
+        # and the closed set has no bucket for it, so it stays blank.
+        return None, "explicit-other"
+    for rx, bucket in _LEAD_SOURCE_RULES:
+        if rx.search(text):
+            return bucket, "rule"
+    # What is left in this field, in the live sheets, is the name of a person
+    # or an organisation — a referrer's own name, the school they came from, a
+    # community trust. Somebody told them, which is what Referral means. The
+    # closed set has three buckets and no Other, so leaving these blank would
+    # drop real referrals out of the only column anyone groups by.
+    return "Referral", "named-referrer"
+
+
+def canonicalize_lead_source(value: Optional[str]) -> Optional[str]:
+    """One of LEAD_SOURCE_BUCKETS, or None for an explicit "Other" answer."""
+    return lead_source_basis(value)[0]
+
+
+def canonicalize_occupation(value: Optional[str]) -> Optional[str]:
+    """Working adults into one bucket; students, housewives kept apart."""
+    if not isinstance(value, str):
+        return None
+    text = re.sub(r"\s+", " ", value).strip()
+    if not text or text.lower() in _BLANK_VALUES:
+        return None
+    # Unlike a lead source, "Other" here is a real answer on the form — the
+    # person said none of the listed occupations — so it keeps its bucket.
+    if text.lower() in _EXPLICIT_OTHER:
+        return "Other"
+    if _BARE_FREELANCE_RE.match(text):
+        return "Other"
+    if _FREELANCE_RE.search(text):
+        return "Business / Job"
+    # Match case-folded. The cleaner lowercases categoricals before this runs,
+    # but the function is also called directly and must not depend on that.
+    lowered = text.lower()
+    for rx, bucket in _OCCUPATION_RULES:
+        if rx.search(lowered):
+            return bucket
+    return "Other"
+
+
 def canonicalize_course(value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
     """Return (course_family, module_label) for a raw course string.
 

@@ -75,9 +75,49 @@ rows read, the person-identity basis, and the first few quality notes.
   repeat. Normal for this institute's per-branch receipt books; worth stating.
 - Dropped rows. `dropped_reasons` says why. Rows without any usable date are
   dropped, not silently ignored.
+- A note that a field was **grouped into reporting buckets** — see below. It
+  changes what a breakdown means, so it is never silent.
 
 **3. The files.** `artifacts` lists them with full paths. `cleaned.csv` is the
 masked frame — hand them the path; it is safe to share.
+
+## Reporting taxonomies — the institute's closed sets
+
+Four fields report on a **fixed** set of values, given by the operator. Closed
+means a value outside the set is a bug in the rules, not a new category — so
+never invent a level, and never report one of these fields by its raw text.
+
+| Field | The closed set | The judgement behind it |
+|---|---|---|
+| course → `course_category_derived` | Programming & Development · Design & Creative · Digital Marketing · Data & Analytics · Accounting & Finance · Office & Productivity · Foundational/School · **Other** | a bundle classifies by its **anchor**: Computer Basics or Professional Office wins over whatever the bundle names second, and a Kids course is school tutoring. *AI & Emerging Tech* is retired into Programming & Development. Power BI files under Office & Productivity and SQL under Programming — the institute's own filing, not the subject |
+| lead source | Online/Google/Social · Referral · Walk-in | old-student, friend, family and relative are one **Referral** — the institute acts on referral-or-not, not on who referred. There is **no Print/Outdoor bucket**: hoardings, banners, newspaper and radio are local-awareness spend that puts someone at the counter, so they read Walk-in |
+| occupation | Student · Business / Job · Housewife · Other | self-employed against salaried was judged not useful; School is a **Student**; a bare "Freelance" stays Other because no field is stated, while "Freelancing as graphic designer" is a working adult. Retired and unemployed fall to **Other** |
+| branch | Vesu · Pal · Citylight | three sites, no more. `adajan` is a locality served by **Pal**, not a fourth branch |
+
+Three things to relay whenever these appear in `known_issues`:
+
+- **The original survives** in `<col>_raw`, and the derived category sits
+  *beside* any category column the sheet already had rather than overwriting
+  it. These groupings are the institute's current policy, not facts, so a later
+  operator can have the finer split back without re-running anything.
+- **Two lead-source paths are assumptions, and both are counted.** A blank cell
+  is read as Walk-in; free text that matches no channel is read as Referral,
+  because what sits in that field is the name of whoever referred them. The
+  note gives both counts. A named-referrer count that jumps is how a channel
+  the rules do not know yet shows up — say so.
+- **`Other` is a bucket, not a verdict.** It is where a course no rule covers
+  lands, so quote its size when it is non-zero and do not present it as a
+  segment worth acting on.
+
+An explicit "Other" answer for **lead source** is the one value left blank: the
+person said none of these, which is evidence of no channel, and the closed set
+has nowhere to put it.
+
+**These columns carry into the analysis, not just the CSV.** A breakdown or a
+crossing that asks for `course` gets `course_category_derived` — eight levels
+the institute reports on, rather than ~40 canonical families against a 12-level
+cap. To break down by the fine course instead, pass the column's literal
+header rather than the role name.
 
 ## Then ask, and wait
 

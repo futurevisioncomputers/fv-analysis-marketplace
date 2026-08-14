@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
 
+from . import canonical_maps
 from . import statistics as st
 
 JsonDict = Dict[str, Any]
@@ -166,9 +167,19 @@ def _mask(series: pd.Series, spec: Mapping[str, Any]) -> pd.Series:
 
 
 def _resolve(df: pd.DataFrame, name: str, roles: Mapping[str, str]) -> Optional[str]:
-    """A column name, a role name, or a case-insensitive column match."""
+    """A column name, a role name, or a case-insensitive column match.
+
+    A role with a coarser reporting column (course -> course_category_derived)
+    resolves to that one. Crossing by raw course puts ~40 families against the
+    12-level cap, so most of the sheet ends up in the excluded remainder; the
+    8 reporting categories are what the institute breaks down by. Naming the
+    fine column literally still reaches it — that check comes first.
+    """
     if name in df.columns:
         return name
+    preferred = canonical_maps.preferred_reporting_column(name, roles, df.columns)
+    if preferred:
+        return preferred
     if name in roles and roles[name] in df.columns:
         return roles[name]
     lowered = {str(c).strip().lower(): c for c in df.columns}
@@ -318,8 +329,11 @@ def suggest_pairs(roles: Mapping[str, str],
         if left not in roles or right not in roles:
             continue
         if df is not None:
-            lc, rc = roles[left], roles[right]
-            if lc not in df.columns or rc not in df.columns:
+            # Same preference the crossing itself applies, so a pair is judged
+            # on the column it would actually use.
+            lc = canonical_maps.preferred_reporting_column(left, roles, df.columns)
+            rc = canonical_maps.preferred_reporting_column(right, roles, df.columns)
+            if not lc or not rc or lc == rc:
                 continue
             if df[lc].nunique(dropna=True) < 2 or df[rc].nunique(dropna=True) < 2:
                 continue

@@ -238,6 +238,95 @@ plus operational notes that are *not* statuses: `(fast track)`,
 Strip these **before** hashing the name, or the same person hashes differently
 across rows.
 
+## 5a. Reporting taxonomies — the operator's own groupings
+
+Recorded from a corrections log (2026-08-14) and then **fixed as closed sets by
+the operator**. All of them are **policy, not fact** — they encode which
+distinctions the institute acts on — so the cleaner applies them as the default
+and keeps the original value in `<col>_raw`. Reversible by construction.
+
+Closed means a value outside the set is a bug in the rules, not a new level:
+
+| Field | The set |
+|---|---|
+| `course_category_derived` | Foundational/School · Programming & Development · Office & Productivity · Digital Marketing · Data & Analytics · Accounting & Finance · Design & Creative · Other |
+| lead source | Online/Google/Social · Referral · Walk-in |
+| occupation | Student · Business / Job · Housewife · Other |
+| branch | Vesu · Pal · Citylight (§5) |
+
+These are also what the **analysis** breaks down by: a brief or a crossing that
+asks for the `course` role resolves to `course_category_derived`
+(`canonical_maps.REPORTING_ROLE_PREFERENCE`). Eight levels are a report; ~40
+canonical families against a 12-level cap are a truncated grid. The fine column
+stays reachable by its literal header.
+
+**Course → category.** Eight buckets. The rules the keyword matcher had missed:
+
+| Rule | Was |
+|---|---|
+| Video/motion work (`Video Editing`, `After Effects`, `Adobe Illustrator`) → Design & Creative | Other |
+| Theory courses (`Psudo Code`, `Data structure & algorithm`, `Web Development`) → Programming & Development | Other |
+| Every spelling of the digital-designing certificate → Digital Marketing | Other, or wrongly Design & Creative |
+| `Business Analystics` (misspelled at source) → Data & Analytics | Other — the typo broke the match |
+| **A bundle anchored on Computer Basics → Office & Productivity**, whatever its second subject | classified by the second subject |
+| `Agentic AI & Automation Specialist` → Programming & Development | AI & Emerging Tech, now retired |
+
+Foundational/School is now real school tutoring only (12th Computer Science,
+Kids Course, School Course) — every Computer Basics variant moved out of it.
+The **anchor** rules read the raw course string, because the family rules
+resolve a bundle to whichever subject their ordering reaches first. Two anchors,
+tested in order: `kids` → Foundational/School, then `computer basic` /
+`professional office` → Office & Productivity.
+
+Two calls that follow the operator's own filing rather than the subject:
+**Power BI → Office & Productivity** (every spelling, in their audit) and
+**SQL → Programming & Development** (3 of its 4 rows). Accounting & Finance was
+split out of Office & Productivity — Tally/GST is a different buyer from Word
+and Excel — and financial modelling goes with it, by subject rather than tool.
+
+**Lead source → three buckets.** The largest correction in the log, 423 rows.
+Old Student, Friends, Family and Relatives all collapse into one **Referral**:
+who referred them is not a decision the institute takes, referral-or-not is.
+
+There is **no Print/Outdoor bucket**. Hoardings, banners, newspaper, pamphlets
+and radio are local-awareness spend that puts someone at the counter, which is
+the same reasoning the log already applied to hoardings; all read **Walk-in**.
+
+Two paths reach a bucket without the cell saying so, and both are counted in
+the quality report (`lead_source_basis` returns which):
+
+- a **blank** source defaults to Walk-in, since nobody fills the field for
+  someone standing at the counter;
+- free text matching no channel reads **Referral**, because what sits in that
+  field is the name of whoever referred them — a person, the school they came
+  from, a community trust. The count is reported and the values are **not**
+  quoted: they are real people's names, and a quality note travels into
+  reports.
+
+**Occupation → four buckets.** Business and Job merge into one working-adult
+bucket, absorbing the free-text trades that used to fall through (Teacher,
+Lawyer, Event planner, Diamonds). `School` is a **Student**. A bare `Freelance`
+stays Other — no field is stated — while `Freelancing as graphic designer` is a
+working adult. Retired and unemployed had buckets of their own and no longer do:
+neither is a segment the institute markets to differently, and both are tiny.
+
+⚠ **Two entries in the log are explicitly not rules** and are not implemented:
+two `Housewife` rows the operator recoded to Other. No textual pattern
+separates them from the 52 that stayed, so the log attributes them to outside
+knowledge of those students. Encoding them would mean hard-coding two people's
+names into the cleaner.
+
+`Other` is a **named member** of the course and occupation sets, so an
+unclassifiable course lands there rather than blank — the operator wants one
+bounded column to group by. Its size is quoted in the quality report every time
+it is non-zero, so a growing Other reads as a gap in these rules rather than as
+a segment worth acting on.
+
+Blank still means blank: no course recorded at all is not the same statement as
+a course we could not classify, and the two are kept apart. The one lead source
+left blank is a literal `Other` answer — the person said none of these, which is
+evidence of no channel, and the closed set has nowhere to put it.
+
 ## 6. Field-level damage
 
 **Phones** — 10-digit is the norm, but the sheets contain 9-digit (dropped
@@ -269,7 +358,7 @@ In the generated samples, date **order is day-first in 100% of rows**; the
 value-damage classes above are retained, including ~1% separator drift.
 
 **Emails** — typo TLD (`.con`), missing dot (`gmail com`), stray comma
-(`gmail,.com`), no domain at all (`Wagleaarav230908`), ALL CAPS, and
+(`gmail,.com`), no domain at all (`Mehtakrishang230908`), ALL CAPS, and
 mojibake from smart quotes (`itâ€™s_jaya@example.in`).
 
 **Receipt IDs** — not a key. Blank, zero-padded (`002`, `0000`), ranges
