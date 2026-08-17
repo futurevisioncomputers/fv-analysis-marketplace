@@ -44,6 +44,8 @@ import json
 import os
 import shutil
 import tempfile
+import threading
+import time
 import uuid
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -52,6 +54,31 @@ JsonDict = Dict[str, Any]
 SESSION_FILE = "session.json"
 ARTIFACT_DIR = "artifacts"
 REGISTRY_FILE = "monitoring_registry.json"
+
+# Windows refuses a file that is mid-replace, and it refuses with
+# PermissionError (ERROR_ACCESS_DENIED) rather than anything that reads like
+# "try again". One process running stages front to back never notices. The web
+# service does: it answers a status poll on an HTTP thread while a worker
+# thread is saving, and one poll in a few hundred died with
+#     PermissionError: ... runs\<id>\session\session.json
+# which surfaced as a 500 on a run that was working perfectly. The costlier
+# half of the same race is the write side: a reader holding the target open
+# denies `os.replace` DELETE access, so the save fails and the stage that just
+# finished is never recorded — work done, run still reporting `pending`.
+#
+# Two defences, because they cover different cases:
+#
+# 1. A process-wide lock. Reader and writer are threads of ONE process in the
+#    web service, so serialising the file touch removes that race outright
+#    rather than making it rarer. The file is small and the hold is sub-
+#    millisecond, which is nothing beside a stage.
+# 2. A bounded retry, for the case the lock cannot see: a second process (a
+#    CLI run against a session the service is also watching). The write is
+#    atomic, so the loser only has to wait for the swap to land. ~0.4s total,
+#    then the error is raised — silently returning stale state would be worse
+#    than a visible failure.
+_IO_LOCK = threading.RLock()
+_SWAP_RETRY_DELAYS = (0.01, 0.02, 0.05, 0.1, 0.25)
 
 # Stage order. The key is what the CLI and the skills use; `label` is what the
 # operator sees at a checkpoint. `requires` drives prerequisite back-fill.
@@ -94,6 +121,40 @@ class SessionError(RuntimeError):
     """Raised for unusable session state — bad key, corrupt file, no source."""
 
 
+def _read_json(target: str) -> JsonDict:
+    """Read a JSON file, retrying while another thread is replacing it.
+
+    See `_SWAP_RETRY_DELAYS`. A JSONDecodeError is NOT retried — that is a
+    genuinely corrupt file, and re-reading it just delays the report.
+    """
+    last: Optional[OSError] = None
+    for delay in (0.0,) + _SWAP_RETRY_DELAYS:
+        if delay:
+            time.sleep(delay)
+        try:
+            with _IO_LOCK:
+                with open(target, encoding="utf-8") as fh:
+                    return json.load(fh)
+        except PermissionError as exc:
+            last = exc
+    raise last  # type: ignore[misc]
+
+
+def _replace(tmp: str, target: str) -> None:
+    """`os.replace`, retrying while another process has the target open."""
+    last: Optional[OSError] = None
+    for delay in (0.0,) + _SWAP_RETRY_DELAYS:
+        if delay:
+            time.sleep(delay)
+        try:
+            with _IO_LOCK:
+                os.replace(tmp, target)
+            return
+        except PermissionError as exc:
+            last = exc
+    raise last  # type: ignore[misc]
+
+
 class Session:
     """Accumulated state for one analysis run, persisted to a directory."""
 
@@ -134,8 +195,7 @@ class Session:
                 "Start one with Session.create()."
             )
         try:
-            with open(target, encoding="utf-8") as fh:
-                state = json.load(fh)
+            state = _read_json(target)
         except json.JSONDecodeError as exc:
             raise SessionError(f"Corrupt session file {target}: {exc}") from exc
         return cls(path, state)
@@ -197,7 +257,7 @@ class Session:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(self.state, fh, indent=2, default=str)
-            os.replace(tmp, target)
+            _replace(tmp, target)
         except BaseException:
             if os.path.exists(tmp):
                 os.unlink(tmp)
