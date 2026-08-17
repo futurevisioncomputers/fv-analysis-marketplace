@@ -14,6 +14,7 @@ to the keyword logic. The pipeline never depends on the LLM.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
@@ -262,6 +263,20 @@ MODULE_KEYWORDS = {
     "certificates": ["certificate", "issued", "pending certificate", "duplicat"],
     "student_reviews": ["review", "rating", "nps", "satisfaction", "negative"],
 }
+
+# When no module keyword matches, this agent asks "all modules, or only
+# selected?". That question has to be ANSWERABLE in the same free-text box the
+# operator was given, or answering it re-runs the same keyword matcher, fails
+# the same way, and re-asks the same question forever. These are the phrasings
+# that mean "all of it" — `al{1,2}` because "al module" is one dropped keystroke
+# from "all module" and the loop it causes is not a fair price for a typo.
+SCOPE_ALL_PATTERNS = (
+    r"\bal{1,2}\s+(the\s+)?modules?\b",
+    r"\bal{1,2}\s+of\s+(them|it)\b",
+    r"\bevery\s+modules?\b",
+    r"\b(whole|entire|complete|full)\s+(institute|business|thing)\b",
+    r"\beverything\b",
+)
 
 RISK_HYPOTHESES = {
     "duplicate_leads": {
@@ -618,6 +633,7 @@ class ProblemDefinitionAgent:
             modules_input = {}
 
         inferred_modules = self._infer_modules_from_text(user_question)
+        scope_is_all = self._scope_is_all(user_question)
         modules: Dict[str, JsonDict] = {}
 
         for name, defaults in MODULE_DEFINITIONS.items():
@@ -647,7 +663,7 @@ class ProblemDefinitionAgent:
                 "dimensions": dimensions,
             }
 
-        if not modules_input and not inferred_modules:
+        if not modules_input and not inferred_modules and not scope_is_all:
             clarifying_questions.append(
                 "Confirm whether all institute modules should be in scope or only selected modules."
             )
@@ -903,6 +919,17 @@ class ProblemDefinitionAgent:
             merged = [m for m in MODULE_DEFINITIONS if m in set(llm_matches) | set(keyword_matches)]
             return merged
         return keyword_matches
+
+    @staticmethod
+    def _scope_is_all(text: str) -> bool:
+        """True when the request explicitly asks for the whole institute.
+
+        Only consulted when nothing else named a module. Every module is already
+        enabled in that case — this decides whether to ANSWER the scope question
+        or ask it, so a "yes, all of it" reply is taken as the answer it is.
+        """
+        lowered = (text or "").lower()
+        return any(re.search(p, lowered) for p in SCOPE_ALL_PATTERNS)
 
     def _keyword_modules_from_text(self, text: str) -> List[str]:
         text_lower = text.lower()

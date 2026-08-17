@@ -984,6 +984,15 @@ def checkpoint(session: Session, key: str) -> JsonDict:
 
     following = session.next_stage()
     extra: JsonDict = {}
+    if entry.get("status") == "blocked" and isinstance(result, Mapping):
+        # A refusal is only useful if the caller can see WHAT the agent wants.
+        # Problem Definition asks eleven clarifying questions; without these
+        # the operator reads "returned 'needs_clarification'" and has no idea
+        # which answer would unblock it.
+        extra["reason"] = result.get("reason")
+        detail = result.get("detail")
+        if detail:
+            extra["detail"] = detail
     if key == "problem" and result:
         # The operator's decision at this checkpoint is "are these the right
         # questions?", which cannot be answered without knowing which of them
