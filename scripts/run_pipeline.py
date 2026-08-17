@@ -125,19 +125,21 @@ def _build_data_sources(args) -> list:
             raise FileNotFoundError(f"Excel workbook not found: {args.excel}")
         import pandas as pd
 
-        workbook = pd.ExcelFile(args.excel, engine="openpyxl")
-        for sheet in workbook.sheet_names:
-            sample = pd.read_excel(args.excel, sheet_name=sheet, nrows=1, engine="openpyxl")
-            if sample.empty and len(sample.columns) == 0:
-                continue
-            sources.append({
-                "name": _safe_source_name(sheet),
-                "type": "excel_sheet",
-                "path": args.excel,
-                "path_or_query": args.excel,
-                "sheet_name": sheet,
-                "domain": _infer_domain(sheet, list(sample.columns)),
-            })
+        # Closed explicitly: an open ExcelFile holds a handle for the life of
+        # the process, and on Windows that makes the workbook undeletable.
+        with pd.ExcelFile(args.excel, engine="openpyxl") as workbook:
+            for sheet in workbook.sheet_names:
+                sample = workbook.parse(sheet, nrows=1)
+                if sample.empty and len(sample.columns) == 0:
+                    continue
+                sources.append({
+                    "name": _safe_source_name(sheet),
+                    "type": "excel_sheet",
+                    "path": args.excel,
+                    "path_or_query": args.excel,
+                    "sheet_name": sheet,
+                    "domain": _infer_domain(sheet, list(sample.columns)),
+                })
     for item in args.source or []:
         if "=" not in item:
             raise ValueError("--source must be in name=path.csv format")
