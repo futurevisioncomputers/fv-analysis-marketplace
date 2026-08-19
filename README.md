@@ -1,4 +1,4 @@
-# FV-Analysis — institute analytics for Claude Code
+# FV-Analysis — Institute Analytics 
 
 Turns a raw institute sheet (admissions, enquiries, fees, receipts,
 certificates, timetable tabs) into a decision-grade **PII-safe HTML report** —
