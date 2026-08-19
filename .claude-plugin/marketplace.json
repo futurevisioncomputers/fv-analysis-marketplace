@@ -43,6 +43,24 @@
         "calibration",
         "hyperparameter-tuning"
       ]
+    },
+    {
+      "name": "nerdit_try_plugin",
+      "source": {
+        "source": "github",
+        "repo": "futurevisioncomputers/nerdit-plugin-json-generator"
+      },
+      "version": "2.2.0",
+      "description": "Multi-agent NERDIT LMS course generator. Orchestrates nerdit-lesson-writer and nerdit-qa-validator subagents to turn course-[chaptername]_input.json files into a full course object: course metadata, assessment bank, and per-lesson HTML, duration, and quiz questions.",
+      "category": "education",
+      "keywords": [
+        "nerdit",
+        "lms",
+        "lesson-generator",
+        "multi-agent",
+        "education",
+        "course-authoring"
+      ]
     }
   ]
 }
