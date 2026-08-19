@@ -25,8 +25,8 @@
     {
       "name": "tabular-ml",
       "source": {
-        "source": "github",
-        "repo": "futurevisioncomputers/tabular-ml-plugin"
+        "source": "url",
+        "url": "https://github.com/futurevisioncomputers/tabular-ml-plugin.git"
       },
       "version": "1.1.0",
       "description": "A change is real only if it survives multiple random validation splits. Multi-seed cross-validation that separates genuine improvements from noise, per-column cleaning rulebooks, leakage and calibration auditing, model comparison ranked by cost as well as score, and tabular foundation models with their context caps and weight licensing enforced.",
@@ -47,8 +47,8 @@
     {
       "name": "nerdit_try_plugin",
       "source": {
-        "source": "github",
-        "repo": "futurevisioncomputers/nerdit-plugin-json-generator"
+        "source": "url",
+        "url": "https://github.com/futurevisioncomputers/nerdit-plugin-json-generator.git"
       },
       "version": "2.2.0",
       "description": "Multi-agent NERDIT LMS course generator. Orchestrates nerdit-lesson-writer and nerdit-qa-validator subagents to turn course-[chaptername]_input.json files into a full course object: course metadata, assessment bank, and per-lesson HTML, duration, and quiz questions.",
