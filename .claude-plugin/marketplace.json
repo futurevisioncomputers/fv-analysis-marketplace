@@ -45,7 +45,7 @@
       ]
     },
     {
-      "name": "nerdit_try_plugin",
+      "name": "nerdit_content_creator",
       "source": {
         "source": "url",
         "url": "https://github.com/futurevisioncomputers/nerdit-plugin-json-generator.git"
