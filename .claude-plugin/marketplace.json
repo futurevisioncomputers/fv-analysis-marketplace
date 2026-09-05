@@ -50,7 +50,7 @@
         "source": "url",
         "url": "https://github.com/futurevisioncomputers/nerdit-plugin-json-generator.git"
       },
-      "version": "2.2.0",
+      "version": "3.0.0",
       "description": "Multi-agent NERDIT LMS course generator. Orchestrates nerdit-lesson-writer and nerdit-qa-validator subagents to turn course-[chaptername]_input.json files into a full course object: course metadata, assessment bank, and per-lesson HTML, duration, and quiz questions.",
       "category": "education",
       "keywords": [
