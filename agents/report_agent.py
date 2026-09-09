@@ -3,8 +3,19 @@
 Turns one completed pipeline run into a single, shareable, standalone **HTML
 report**. It is a *composition* agent: it reads ONLY the JSON contracts the
 Orchestrator already produced (`final_report` + `question_results`) — never the
-dataframe — and assembles a styled document. Charts are the exact Chart.js configs
-the Visualization Agent emitted, rendered in-browser via the Chart.js CDN.
+dataframe — and assembles a styled document. Charts are drawn server-side as
+inline SVG (`svg_charts`) from the exact series the Visualization Agent emitted.
+
+Three rules govern what reaches the page, all of them learned from a run that
+printed ninety-seven sheets and not one visible graph:
+
+1. **A question appears exactly once.** It is routed to the single business area
+   it is about — not to every area whose keyword appears somewhere in a chart
+   label. See `_route_questions`.
+2. **A question the data cannot answer prints nothing.** It is listed once, with
+   its reason, in the data-quality footer. See `_unanswered_list`.
+3. **A chart is SVG or it is a table.** Never an empty frame: a canvas on a
+   hidden page sizes to 0x0 and prints blank. See `_chart_figure`.
 
 LLM boundary (identical to Insights/Recommendation):
 - The LLM only *phrases* prose narratives, grounded ONLY in facts already computed
@@ -26,7 +37,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from . import llm_client
+from . import llm_client, svg_charts
 
 
 JsonDict = Dict[str, Any]
@@ -42,7 +53,6 @@ DEFAULT_STYLE: JsonDict = {
     "number_font": "Fira Code",
 }
 
-CHARTJS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
 # Bare 10-digit run (unbounded on both sides so an 11+ digit Chart.js epoch /
 # value never trips it — \b requires exactly ten).
 _MOBILE_RE = re.compile(r"\b\d{10}\b")
@@ -284,39 +294,42 @@ class ReportAgent:
 
     def _render(self, fr, qresults, narrative, st, title, generated_at, live) -> str:
         pal = st.get("palette", {})
+        answered = [q for q in qresults if q.get("status") == "ok"]
+        unanswered = [q for q in qresults if q.get("status") != "ok"]
+        routed = self._route_questions(answered)
+
+        # Only areas that actually have an answered question get a page. An
+        # empty section used to print a placeholder card, so a run that could
+        # answer nothing about fees still shipped a Financial Report.
         pages = self._dashboard_pages()
-        routed = self._route_questions(qresults)
-        chart_scripts: List[str] = []
+        live_pages = [p for p in pages[1:] if routed.get(p[0])]
+
         body: List[str] = [self._header(title, fr, generated_at, live)]
-        body.append(self._nav(pages, routed))
+        body.append(self._nav([pages[0]] + live_pages, routed))
         body.append(
             "<section class='page active' id='page-overview' data-page='overview'>"
             + self._page_head("Executive overview",
-                              "Board-level summary across all available business areas.")
+                              "What the uploaded data says, and what to do about it.")
             + self._exec_section(narrative["executive"])
-            + self._kpi_strip(qresults, fr)
+            + self._kpi_strip(answered, fr)
+            + self._recs_section(fr, narrative["recommendations"])
+            + self._dataset_charts(answered, pal)
             + self._multi_source_section(fr)
             + self._cross_factor_section(fr)
-            + self._business_tiles(pages, routed)
-            + self._recs_section(fr, narrative["recommendations"])
+            + self._business_tiles(live_pages, routed)
             + self._monitoring_section(fr, narrative["monitoring"])
-            + self._data_quality_footer(fr)
+            + self._data_quality_footer(fr, unanswered)
             + "</section>"
         )
 
-        for page_id, label, desc in pages[1:]:
-            blocks: List[str] = []
-            for i, q in enumerate(routed.get(page_id, []), start=1):
-                block, scripts = self._question_block(q, f"{page_id}_{i}")
-                blocks.append(block)
-                chart_scripts.extend(scripts)
+        for page_id, label, desc in live_pages:
+            blocks = [
+                block for block in
+                (self._question_block(q, pal) for q in routed.get(page_id, []))
+                if block
+            ]
             if not blocks:
-                blocks.append(
-                    "<article class='qblock empty-state'>"
-                    "<h3>No direct analysis block for this page</h3>"
-                    f"<p>{html.escape(self._empty_page_message(fr, page_id))}</p>"
-                    "</article>"
-                )
+                continue
             body.append(
                 f"<section class='page' id='page-{page_id}' data-page='{page_id}'>"
                 + self._page_head(label, desc)
@@ -325,20 +338,12 @@ class ReportAgent:
             )
 
         css = self._css(st, pal)
-        script = ""
-        if chart_scripts:
-            script = (
-                f'<script src="{CHARTJS_CDN}"></script>\n'
-                "<script>document.addEventListener('DOMContentLoaded',function(){\n"
-                "window.fvCharts=[];\n"
-                + "\n".join(chart_scripts) + "\n"
-                + self._dashboard_script() + "\n});</script>"
-            )
-        else:
-            script = (
-                "<script>document.addEventListener('DOMContentLoaded',function(){\n"
-                + self._dashboard_script() + "\n});</script>"
-            )
+        # Charts are inline SVG now, so the only script left is tab switching —
+        # and the document is fully readable, and fully printable, without it.
+        script = (
+            "<script>document.addEventListener('DOMContentLoaded',function(){\n"
+            + self._dashboard_script() + "\n});</script>"
+        )
         return (
             "<!DOCTYPE html>\n<html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -555,18 +560,18 @@ class ReportAgent:
     def _fmt_rate(value) -> str:
         return "—" if value is None else f"{float(value):.1%}"
 
-    def _question_block(self, q, namespace: str = "") -> (str, List[str]):
+    def _question_block(self, q, pal: Mapping[str, Any]) -> Optional[str]:
+        """Render one answered question, or None if it was not answered.
+
+        A question the data could not answer produces nothing here. It is
+        listed once, with its reason, in the data-quality footer — instead of
+        printing a "Skipped" card on every page it was routed to.
+        """
+        if q.get("status") != "ok":
+            return None
+
         qid = html.escape(str(q.get("question_id", "")))
         qtext = html.escape(str(q.get("question", "")))
-        status = q.get("status")
-        if status != "ok":
-            reason = html.escape(str(q.get("skip_reason") or "not computable on this data"))
-            return (
-                f"<article class='qblock skipped'><h3>{qid}: {qtext}</h3>"
-                f"<p class='empty'>Skipped — {reason}. No chart is shown rather than "
-                "fabricate one.</p></article>", []
-            )
-
         insight = q.get("insight") or {}
         parts = [f"<article class='qblock'><h3>{qid}: {qtext}</h3>"]
         summ = insight.get("executive_summary")
@@ -598,30 +603,77 @@ class ReportAgent:
             )
             parts.append(f"<h4>Opportunities</h4><ul>{items}</ul>")
 
-        scripts: List[str] = []
-        charts = (q.get("visual") or {}).get("charts") or []
-        for c in charts:
-            cfg = c.get("chartjs")
-            cid = c.get("id")
-            if not cfg or not cid:
+        # Caveats say why a number looks the way it does — "every row in this
+        # file is admitted, so the rate is 100% everywhere". Without them a
+        # bare 100% with no breakdown reads as a broken report rather than as
+        # a fact about the upload.
+        caveats = (q.get("analysis") or {}).get("caveats") or []
+        if caveats:
+            items = "".join(
+                f"<li>{html.escape(str(self._text_of(c, 'caveat')))}</li>"
+                for c in caveats[:3]
+            )
+            parts.append(f"<h4>Read this with</h4><ul class='caveats'>{items}</ul>")
+
+        for c in (q.get("visual") or {}).get("charts") or []:
+            # Dataset-scope charts (monthly volume, the funnel) describe the
+            # whole upload, not this question. They are identical under every
+            # question, so they are drawn once on the overview instead.
+            if str(c.get("scope") or "question") != "question":
                 continue
-            canvas_id = re.sub(r"[^A-Za-z0-9_]", "_", f"{namespace}_{qid}_{cid}")
-            ctitle = html.escape(str(c.get("title", "")))
-            sub = html.escape(str(c.get("subtitle", "")))
-            alt = html.escape(str(c.get("alt_text", "")))
-            parts.append(
-                "<figure class='chart'>"
-                f"<figcaption><strong>{ctitle}</strong><span>{sub}</span></figcaption>"
-                f"<canvas id='{canvas_id}' role='img' aria-label='{alt}'></canvas>"
-                "</figure>"
-            )
-            scripts.append(
-                "window.fvCharts.push(new Chart("
-                f"document.getElementById('{canvas_id}'),"
-                f"{json.dumps(self._chart_config(cfg), default=str)}));"
-            )
+            figure = self._chart_figure(c, pal)
+            if figure:
+                parts.append(figure)
+
         parts.append("</article>")
-        return "".join(parts), scripts
+        return "".join(parts)
+
+    def _chart_figure(self, c: Mapping[str, Any],
+                      pal: Mapping[str, Any]) -> Optional[str]:
+        """One chart as inline SVG, falling back to its own data table.
+
+        Charts were Chart.js canvases painted by a CDN script. A canvas on a
+        `display:none` page has zero size, so every chart outside the active
+        tab printed as an empty frame — which is what the whole PDF was. SVG is
+        laid out by the print engine like any other markup, needs no network,
+        and shows the same numbers the agent computed.
+        """
+        title = html.escape(str(c.get("title", "")))
+        sub = html.escape(str(c.get("subtitle", "")))
+        alt = html.escape(str(c.get("alt_text", "")))
+        body = svg_charts.render(c, colors=pal)
+        if body is None:
+            body = self._chart_table(c)
+        if not body:
+            return None
+        dropped = svg_charts.truncated_rows(c)
+        note = (f"<p class='chart-note'>Showing the top rows; {dropped} more "
+                "not plotted.</p>") if dropped else ""
+        return (
+            f"<figure class='chart' role='img' aria-label='{alt}'>"
+            f"<figcaption><strong>{title}</strong><span>{sub}</span></figcaption>"
+            f"{body}{note}</figure>"
+        )
+
+    def _chart_table(self, c: Mapping[str, Any]) -> str:
+        """The chart's `table_fallback` as a small table.
+
+        Used when a chart cannot be drawn. The rows are the agent's own
+        computed values, so this degrades to fewer pixels — never to invention.
+        """
+        rows = c.get("table_fallback") or []
+        if not rows or not isinstance(rows[0], Mapping):
+            return ""
+        cols = list(rows[0].keys())
+        head = "".join(f"<th>{html.escape(self._pretty(k))}</th>" for k in cols)
+        body = []
+        for r in rows[:12]:
+            cells = "".join(
+                f"<td>{html.escape(self._fmt_num(r.get(k)))}</td>" for k in cols
+            )
+            body.append(f"<tr>{cells}</tr>")
+        return (f"<table class='charttable'><tr>{head}</tr>"
+                f"{''.join(body)}</table>")
 
     def _recs_section(self, fr, narrative) -> str:
         recs = fr.get("top_recommendations") or []
@@ -662,7 +714,7 @@ class ReportAgent:
             )
         return head + f"<ul class='events'>{''.join(items)}</ul></section>"
 
-    def _data_quality_footer(self, fr) -> str:
+    def _data_quality_footer(self, fr, unanswered=()) -> str:
         dq = fr.get("data_quality") or {}
         rows = dq.get("row_count")
         issues = dq.get("known_issues") or []
@@ -672,12 +724,45 @@ class ReportAgent:
         if issues:
             items = "".join(f"<li>{html.escape(str(i))}</li>" for i in issues)
             parts.append(f"<ul class='issues'>{items}</ul>")
+        parts.append(self._unanswered_list(unanswered))
         parts.append("</footer>")
         return "".join(parts)
 
-    def _business_tiles(self, pages, routed) -> str:
+    def _unanswered_list(self, unanswered) -> str:
+        """The questions this upload could not answer, listed once, with why.
+
+        These used to render as a "Skipped" card in the report body — on every
+        page the question was routed to. They are a property of the uploaded
+        file, not a finding, so they belong here: one line each, telling the
+        operator which column to add to the sheet next time.
+        """
+        rows = []
+        for q in unanswered:
+            qid = html.escape(str(q.get("question_id", "")))
+            qtext = html.escape(str(q.get("question", "")))
+            reason = html.escape(
+                str(q.get("skip_reason") or "not computable on this data").rstrip(".")
+            )
+            label = f"{qid}: {qtext}" if qid else qtext
+            rows.append(f"<li><strong>{label}</strong><span>{reason}</span></li>")
+        if not rows:
+            return ""
+        # A plain block, not a <details>: a collapsed disclosure prints as its
+        # summary line alone, and this list has to survive the PDF.
+        return (
+            "<section class='unanswered'>"
+            f"<h3>{len(rows)} question(s) this file could not answer</h3>"
+            "<p>No chart or number is shown for these — the columns they need "
+            "are not in the upload. Add the column and re-run to answer them.</p>"
+            f"<ul>{''.join(rows)}</ul></section>"
+        )
+
+    def _business_tiles(self, live_pages, routed) -> str:
+        """Jump tiles for the areas that have content (already filtered)."""
+        if not live_pages:
+            return ""
         tiles = []
-        for page_id, label, desc in pages[1:]:
+        for page_id, label, desc in live_pages:
             count = len(routed.get(page_id, []))
             tiles.append(
                 f"<button class='tile' type='button' data-target='{page_id}'>"
@@ -688,90 +773,96 @@ class ReportAgent:
             )
         return "<section class='tiles'>" + "".join(tiles) + "</section>"
 
-    def _empty_page_message(self, fr, page_id: str) -> str:
-        sources = fr.get("sources") or []
-        domain_aliases = {
-            "financial": ("finance",),
-            "operational": ("operations", "admission", "student"),
-            "product": ("product", "course", "certificate", "student"),
-            "branch": ("branch", "operations", "student", "admission"),
-            "team": ("team", "faculty", "student", "admission"),
-        }
-        domains = domain_aliases.get(page_id, (page_id,))
-        matching = [s for s in sources if str(s.get("domain")) in domains]
-        if matching:
-            names = ", ".join(str(s.get("name")) for s in matching[:4])
-            return (
-                f"Source data exists for this area ({names}), but no matching analysis "
-                "block was generated in this run."
-            )
-        if sources:
-            return "No source was provided for this dashboard area."
-        return (
-            "The saved run did not contain matching metrics or dimensions. "
-            "Run a question that mentions this area to populate it."
-        )
+    def _dataset_charts(self, answered, pal) -> str:
+        """Whole-upload charts (monthly volume, the funnel), drawn once.
+
+        The Visualization Agent attaches these to every question because they
+        need the dataframe, not the question. Printing them under each question
+        repeated the same two pictures a dozen times; they are shown here, once,
+        as context for the run.
+        """
+        seen, figures = set(), []
+        for q in answered:
+            for c in (q.get("visual") or {}).get("charts") or []:
+                if str(c.get("scope") or "question") != "dataset":
+                    continue
+                title = str(c.get("title", ""))
+                if title in seen:
+                    continue
+                seen.add(title)
+                figure = self._chart_figure(c, pal)
+                if figure:
+                    figures.append(figure)
+        if not figures:
+            return ""
+        return ("<section class='panel context'><h3>This upload at a glance</h3>"
+                + "".join(figures) + "</section>")
+
+    # Ordered most-specific first. On a score tie the earlier rule wins, so
+    # "which counsellors convert best?" lands on the faculty page instead of
+    # being pulled onto operational by the word "admission".
+    _DOMAIN_RULES = (
+        ("financial", ("fee", "fees", "revenue", "payment", "collection", "collected",
+                       "pending", "overdue", "installment", "cost", "profit",
+                       "sales amount", "invoice", "refund", "discount")),
+        ("team", ("counsellor", "counselor", "sales person", "salesperson",
+                  "faculty", "trainer", "teacher", "staff", "employee",
+                  "advisor", "consultant")),
+        ("branch", ("branch", "store", "location", "city", "region", "center",
+                    "centre", "campus")),
+        ("product", ("course", "product", "program", "programme", "package",
+                     "service", "sku", "category", "certificate")),
+        ("operational", ("lead", "admission", "application", "conversion",
+                         "funnel", "enquiry", "inquiry", "dropout", "completion",
+                         "attendance", "batch", "records", "trend")),
+    )
 
     def _route_questions(self, qresults) -> Dict[str, List[Mapping[str, Any]]]:
+        """Place every question on exactly one page.
+
+        Routing used to append a question to *every* page whose keywords it
+        matched, and built the match text from the question plus each chart's
+        title, subtitle and alt-text. Because every question is charted "by
+        Faculty", "by Branch" and "by Course Category", every question matched
+        every area: six questions became thirty blocks and a 97-page PDF whose
+        five business sections were verbatim copies of one another.
+
+        A question now goes to the single best-scoring area, scored on what the
+        question is about — never on the furniture of its charts.
+        """
         routed: Dict[str, List[Mapping[str, Any]]] = {
-            "financial": [], "operational": [], "product": [], "branch": [], "team": [],
+            name: [] for name, _ in self._DOMAIN_RULES
         }
         for q in qresults:
-            text = self._question_text(q)
-            pages = self._domains_for_text(text)
-            if not pages:
-                pages = ["operational"]
-            for page in pages:
-                routed.setdefault(page, []).append(q)
+            routed[self._page_for(q)].append(q)
         return routed
 
-    def _question_text(self, q) -> str:
-        chunks = [str(q.get("question", "")), str(q.get("question_id", ""))]
-        analysis = q.get("analysis") or {}
-        headline = analysis.get("headline_number") or {}
-        chunks.append(str(headline.get("metric", "")))
-        for b in analysis.get("breakdowns") or []:
-            chunks.extend([str(b.get("dimension", "")), str(b.get("dimension_label", "")),
-                           str(b.get("segment", ""))])
-        visual = q.get("visual") or {}
-        for c in visual.get("kpi_cards") or []:
-            chunks.append(str(c.get("metric", "")))
-        for c in visual.get("charts") or []:
-            chunks.extend([str(c.get("title", "")), str(c.get("subtitle", "")),
-                           str(c.get("alt_text", ""))])
-        return " ".join(chunks).lower()
+    def _page_for(self, q) -> str:
+        """The one page a question belongs on."""
+        question = " ".join(
+            [str(q.get("question", "")), str(q.get("question_id", ""))]
+        ).lower()
+        best = self._best_domain(question)
+        if best:
+            return best
+        # Nothing in the wording places it. Fall back to the metric it actually
+        # computed, which is weaker evidence (a metric named
+        # `counselling_to_admission_rate` says "admission" as loudly as it says
+        # "counselling") but better than defaulting blind.
+        metric = str(
+            ((q.get("analysis") or {}).get("headline_number") or {}).get("metric", "")
+        ).lower()
+        return self._best_domain(metric) or "operational"
 
-    def _domains_for_text(self, text: str) -> List[str]:
-        rules = [
-            ("financial", ("fee", "fees", "revenue", "payment", "collection", "pending",
-                           "overdue", "installment", "cost", "profit", "sales amount",
-                           "invoice", "refund", "discount")),
-            ("product", ("course", "product", "program", "programme", "package",
-                         "service", "sku", "category")),
-            ("branch", ("branch", "store", "location", "city", "region", "center",
-                        "centre", "campus")),
-            ("team", ("counsellor", "counselor", "sales person", "salesperson",
-                      "faculty", "trainer", "teacher", "staff", "employee",
-                      "advisor", "consultant")),
-            ("operational", ("lead", "admission", "application", "conversion",
-                             "funnel", "enquiry", "inquiry", "dropout", "completion",
-                             "attendance", "batch", "records", "trend")),
-        ]
-        return [name for name, words in rules if any(word in text for word in words)]
-
-    def _chart_config(self, cfg: Mapping[str, Any]) -> JsonDict:
-        copied = json.loads(json.dumps(cfg, default=str))
-        opts = copied.setdefault("options", {})
-        opts.setdefault("responsive", True)
-        opts.setdefault("maintainAspectRatio", False)
-        plugins = opts.setdefault("plugins", {})
-        plugins.setdefault("tooltip", {"enabled": True, "intersect": False, "mode": "index"})
-        plugins.setdefault("legend", {"display": False})
-        scales = opts.setdefault("scales", {})
-        for axis in ("x", "y"):
-            axis_opts = scales.setdefault(axis, {})
-            axis_opts.setdefault("grid", {"color": "rgba(148,163,184,.2)"})
-        return copied
+    def _best_domain(self, text: str) -> Optional[str]:
+        if not text.strip():
+            return None
+        best_name, best_score = None, 0
+        for name, words in self._DOMAIN_RULES:
+            score = sum(1 for word in words if word in text)
+            if score > best_score:      # strict: earlier rule wins a tie
+                best_name, best_score = name, score
+        return best_name
 
     def _dashboard_script(self) -> str:
         return """
@@ -782,9 +873,6 @@ function showPage(page){
   document.querySelectorAll('[data-target]').forEach(function(el){
     el.classList.toggle('active', el.dataset.target === page);
   });
-  if (window.fvCharts) {
-    window.setTimeout(function(){ window.fvCharts.forEach(function(c){ c.resize(); }); }, 60);
-  }
 }
 document.querySelectorAll('[data-target]').forEach(function(el){
   el.addEventListener('click', function(){ showPage(el.dataset.target); });
@@ -875,11 +963,22 @@ li{{margin:3px 0;}}
 .sev{{display:inline-block;background:var(--danger);color:#fff;border-radius:4px;
   font-size:.68rem;padding:1px 7px;text-transform:uppercase;margin-right:6px;}}
 .chart{{margin:16px 0;background:#fff;border:1px solid var(--grid);border-radius:8px;
-  padding:12px;height:390px;}}
+  padding:12px;}}
 .chart figcaption{{display:flex;justify-content:space-between;gap:12px;font-size:.85rem;
   color:var(--primary);margin-bottom:8px;}}
 .chart figcaption span{{color:var(--neutral);font-weight:400;text-align:right;}}
-canvas{{width:100%!important;height:320px!important;}}
+.chart-note{{margin:6px 0 0;font-size:.78rem;color:var(--neutral);}}
+.caveats li{{color:var(--neutral);font-size:.86rem;}}
+table.charttable{{width:100%;border-collapse:collapse;font-size:.82rem;}}
+.charttable th{{text-align:left;color:var(--neutral);font-weight:600;
+  border-bottom:1px solid var(--grid);padding:5px 8px;}}
+.charttable td{{padding:5px 8px;border-bottom:1px solid var(--grid);}}
+.context .chart{{border:none;padding:0;}}
+.unanswered{{margin-top:16px;padding-top:12px;border-top:1px solid var(--grid);}}
+.unanswered h3{{font-size:.95rem;color:var(--primary);margin:0 0 4px;}}
+.unanswered ul{{list-style:none;padding-left:0;}}
+.unanswered li{{padding:5px 0;border-bottom:1px solid var(--grid);}}
+.unanswered li span{{display:block;color:var(--neutral);font-size:.82rem;}}
 table.rectable{{width:100%;border-collapse:collapse;margin-top:12px;font-size:.9rem;}}
 .rectable th{{text-align:left;background:var(--primary);color:#fff;padding:8px 10px;}}
 .rectable td{{padding:8px 10px;border-bottom:1px solid var(--grid);vertical-align:top;}}
@@ -898,11 +997,28 @@ table.rectable{{width:100%;border-collapse:collapse;margin-top:12px;font-size:.9
   .tabs{{grid-template-columns:1fr;position:static;}}
   .hero{{padding:16px;}}
   h1{{font-size:1.45rem;}}
-  .chart{{height:340px;}}
-  canvas{{height:270px!important;}}
 }}
 @media print{{body{{background:#fff;}}.tabs,.page-actions{{display:none;}}
-  .page{{display:block;page-break-after:always;}}.qblock,.kpi,.hero,.panel{{box-shadow:none;}}}}
+  /* Every section prints, in order, and the SVG inside them prints with them.
+     `page-break-after:always` used to force a feed after each one, which on a
+     report whose sections were near-duplicates is how six questions became
+     ninety-seven sheets of paper. Sections now flow, and only blocks that
+     would straddle a fold are kept whole. */
+  .page{{display:block;}}
+  .page + .page{{page-break-before:always;}}
+  /* Keep a chart whole; let a question block flow. A qblock carries five or
+     six charts and is taller than a sheet of paper, so "never break it" means
+     "start it on a fresh page and leave the rest of this one empty" — the gaps
+     that read as blank pages. Only things that fit on a page are kept whole. */
+  .chart,.kpi,.unanswered li{{page-break-inside:avoid;}}
+  .qblock h3,h2,h3,h4{{page-break-after:avoid;}}
+  /* Nothing after the last section: a trailing break, or bottom padding that
+     spills past the boundary, prints one empty sheet at the end. */
+  .page:last-child{{page-break-after:avoid;}}
+  .report{{padding-bottom:0;}}
+  body{{margin:0;}}
+  .qblock,.kpi,.hero,.panel{{box-shadow:none;}}}}
+{svg_charts.CSS}
 </style>"""
 
     # ================================================================== utils

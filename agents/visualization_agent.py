@@ -155,6 +155,11 @@ class VisualizationAgent:
             "title": self._pretty(metric),
             "subtitle": f"n={h.get('n', 0)}, 95% CI {self._fmt(kind, ci[0])}–{self._fmt(kind, ci[1])}",
             "supports_claim": "headline_number",
+            # `value_format` lets a renderer label 0.549 as 54.9% without
+            # re-deriving the metric kind; `scope` says whether the chart is
+            # about this question or about the whole dataset (see _trend_chart).
+            "value_format": kind,
+            "scope": "question",
             "alt_text": (
                 f"{self._pretty(metric)} is {self._fmt(kind, value)} "
                 f"(95% confidence {self._fmt(kind, ci[0])} to {self._fmt(kind, ci[1])})."
@@ -196,6 +201,8 @@ class VisualizationAgent:
                 "title": f"{self._pretty(metric)} by {dim_label}",
                 "subtitle": f"vs baseline {self._fmt(kind, baseline)}",
                 "supports_claim": "breakdowns",
+                "value_format": kind,
+                "scope": "question",
                 "alt_text": self._breakdown_alt(metric, kind, dim_label, rows),
                 "chartjs": {
                     "type": "bar",
@@ -225,6 +232,8 @@ class VisualizationAgent:
             "title": f"{self._pretty(metric)}: {ctype}",
             "subtitle": self._delta_subtitle(c),
             "supports_claim": "comparisons[0]",
+            "value_format": kind,
+            "scope": "question",
             "alt_text": (
                 f"{ctype}: current {self._fmt(kind, c.get('current'))} vs prior "
                 f"{self._fmt(kind, c.get('prior'))}"
@@ -268,6 +277,11 @@ class VisualizationAgent:
             "title": "Records by month",
             "subtitle": f"{labels[0]} to {labels[-1]}",
             "supports_claim": "headline_number",
+            # Dataset-scope: this is the same series for every question in the
+            # run. Repeating it under all of them padded the report without
+            # adding a fact, so the renderer shows dataset charts once.
+            "value_format": "count",
+            "scope": "dataset",
             "alt_text": (
                 f"Monthly record volume from {labels[0]} to {labels[-1]}; "
                 f"ranges {min(values)} to {max(values)} records."
@@ -317,6 +331,8 @@ class VisualizationAgent:
                       else "Conversion funnel"),
             "subtitle": " -> ".join(labels),
             "supports_claim": "breakdowns",
+            "value_format": "count",
+            "scope": "dataset",
             "alt_text": "Funnel " + ", ".join(
                 f"{l}={v}" for l, v in zip(labels, values)
             ) + ".",
@@ -346,6 +362,8 @@ class VisualizationAgent:
             "title": "Top drivers of the result",
             "subtitle": "signed contribution to the metric",
             "supports_claim": "drivers",
+            "value_format": kind,
+            "scope": "question",
             "alt_text": "Drivers: " + ", ".join(
                 f"{l} {v:+.4f}" for l, v in zip(labels, values)
             ) + ".",
