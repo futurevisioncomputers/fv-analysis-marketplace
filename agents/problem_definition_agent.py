@@ -363,11 +363,15 @@ class ProblemDefinitionAgent:
             conversation_history = []
 
         project = self._build_project(goal)
-        stakeholder = self._build_stakeholder(goal, clarifying_questions)
-        analysis_request = self._build_analysis_request(goal, user_question, clarifying_questions)
-        time_window = self._build_time_window(goal, clarifying_questions)
+        stakeholder = self._build_stakeholder(goal, clarifying_questions,
+                                              soft_clarifications)
+        analysis_request = self._build_analysis_request(goal, user_question,
+                                                       clarifying_questions)
+        time_window = self._build_time_window(goal, clarifying_questions,
+                                              soft_clarifications)
         comparison = self._build_comparison(goal)
-        modules = self._build_modules(goal, user_question, clarifying_questions)
+        modules = self._build_modules(goal, user_question, clarifying_questions,
+                                      soft_clarifications)
         enabled_modules = [name for name, config in modules.items() if config.get("enabled")]
 
         required_datasets = self._required_datasets(goal, enabled_modules)
@@ -507,7 +511,8 @@ class ProblemDefinitionAgent:
         }
 
     def _build_stakeholder(
-        self, goal: Mapping[str, Any], clarifying_questions: List[str]
+        self, goal: Mapping[str, Any], clarifying_questions: List[str],
+        soft_clarifications: List[str],
     ) -> JsonDict:
         stakeholder = goal.get("stakeholder") or {}
         if not isinstance(stakeholder, Mapping):
@@ -517,8 +522,14 @@ class ProblemDefinitionAgent:
         requested_by = self._as_nonblank_string(stakeholder.get("requested_by")) or ""
         priority = self._as_nonblank_string(stakeholder.get("priority")) or "medium"
 
+        # Administrative attribution, not an analytical input: nothing computed
+        # downstream changes with it. `department` and `priority` above already
+        # default rather than ask, and this asked — stopping a run that was
+        # otherwise ready to produce a report.
         if not requested_by:
-            clarifying_questions.append("Who requested this analysis?")
+            requested_by = "operator"
+            soft_clarifications.append(
+                "Requester not given; recorded as 'operator'.")
 
         return {
             "department": self._normalize_choice(
@@ -592,7 +603,8 @@ class ProblemDefinitionAgent:
             return deterministic
 
     def _build_time_window(
-        self, goal: Mapping[str, Any], clarifying_questions: List[str]
+        self, goal: Mapping[str, Any], clarifying_questions: List[str],
+        soft_clarifications: List[str],
     ) -> JsonDict:
         window = goal.get("time_window") or {}
         if not isinstance(window, Mapping):
@@ -602,15 +614,27 @@ class ProblemDefinitionAgent:
         end = self._as_nonblank_string(window.get("end_date"))
         granularity = self._as_nonblank_string(window.get("granularity")) or "month"
 
-        if not start:
-            clarifying_questions.append("What is the analysis start date?")
-        elif not self._valid_date(start):
+        # A missing bound means "no bound", not "unanswerable". The Analyst
+        # treats an empty window as no filter and reports on the whole history,
+        # which is the right default for an admin report — and a better one than
+        # any date this agent could invent, because inventing a start date
+        # silently drops every row before it. A malformed date is still asked
+        # about: that is a typo, not an omission, and honouring it would filter
+        # the data by something the operator did not mean.
+        if start and not self._valid_date(start):
             clarifying_questions.append("Use YYYY-MM-DD format for time_window.start_date.")
-
-        if not end:
-            clarifying_questions.append("What is the analysis end date?")
-        elif not self._valid_date(end):
+            start = ""
+        if end and not self._valid_date(end):
             clarifying_questions.append("Use YYYY-MM-DD format for time_window.end_date.")
+            end = ""
+
+        if not start and not end:
+            soft_clarifications.append(
+                "No date range given; reporting on the whole history in the data.")
+        elif not start:
+            soft_clarifications.append(f"No start date given; reporting everything up to {end}.")
+        elif not end:
+            soft_clarifications.append(f"No end date given; reporting from {start} onwards.")
 
         return {
             "start_date": start or "",
@@ -636,6 +660,7 @@ class ProblemDefinitionAgent:
         goal: Mapping[str, Any],
         user_question: str,
         clarifying_questions: List[str],
+        soft_clarifications: List[str],
     ) -> Dict[str, JsonDict]:
         modules_input = goal.get("modules") or {}
         if not isinstance(modules_input, Mapping):
@@ -673,9 +698,12 @@ class ProblemDefinitionAgent:
             }
 
         if not modules_input and not inferred_modules and not scope_is_all:
-            clarifying_questions.append(
-                "Confirm whether all institute modules should be in scope or only selected modules."
-            )
+            # Every module is already enabled below in this case, so this
+            # asked the operator to confirm a default it had applied anyway.
+            # The questions are derived from the uploaded columns now, which
+            # narrows scope to what the data supports regardless.
+            soft_clarifications.append(
+                "No module scope given; every institute module is in scope.")
 
         if not any(module["enabled"] for module in modules.values()):
             clarifying_questions.append("At least one module must be enabled for analysis.")
@@ -699,7 +727,7 @@ class ProblemDefinitionAgent:
         return {name: bool(raw.get(name, default)) for name, default in DEFAULT_ALERTS.items()}
 
     def _build_targets(
-        self, goal: Mapping[str, Any], clarifying_questions: List[str]
+        self, goal: Mapping[str, Any], soft_clarifications: List[str]
     ) -> JsonDict:
         raw = goal.get("kpi_targets") or {}
         if not isinstance(raw, Mapping):
@@ -709,8 +737,12 @@ class ProblemDefinitionAgent:
         for name, default in DEFAULT_KPI_TARGETS.items():
             value = raw.get(name, default)
             targets[name] = value if value is not None else ""
+            # Advisory, as this agent's own clarification policy says: a KPI
+            # target shapes how a result is judged, not whether it can be
+            # computed. Asking for seven of them stopped a run that could
+            # have produced its report.
             if self._is_blank(value):
-                clarifying_questions.append(f"Confirm KPI target value for {name}.")
+                soft_clarifications.append(f"No KPI target set for {name}.")
 
         return targets
 
@@ -968,10 +1000,12 @@ class ProblemDefinitionAgent:
         if catalog_validation.get("status") == "checked" and catalog_validation.get("missing_datasets"):
             return "blocked"
 
+        # What genuinely stops an analysis: no stated problem, nothing in scope,
+        # no dataset to read, or a question this agent could not answer for
+        # itself. A missing date range does not — the Analyst reads the whole
+        # history when the window is empty, which is what an admin report wants.
         if (
             not analysis_request.get("raw_business_problem")
-            or not time_window.get("start_date")
-            or not time_window.get("end_date")
             or not enabled_modules
             or not required_datasets
             or clarifying_questions

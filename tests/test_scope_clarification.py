@@ -34,11 +34,17 @@ def enabled(brief):
 
 class ScopeAnswerInWords(unittest.TestCase):
 
-    def test_a_request_naming_no_module_asks_the_scope_question(self):
+    def test_a_request_naming_no_module_defaults_to_the_whole_institute(self):
+        # This used to stop the run and ask which modules were in scope, while
+        # the code below it had already enabled every one of them — so the
+        # question asked the operator to confirm a default that was applied
+        # either way. For an admin report that is a wall, not a clarification.
+        # It defaults now, and records what it assumed.
         brief = brief_for("pal branch")
-        self.assertEqual(brief["status"], "needs_clarification")
-        self.assertTrue(any("modules should be in scope" in q
-                            for q in brief["clarifying_questions"]))
+        self.assertNotEqual(brief["status"], "needs_clarification")
+        self.assertEqual(enabled(brief), sorted(MODULE_DEFINITIONS))
+        self.assertTrue(any("every institute module is in scope" in note
+                            for note in brief["soft_clarifications"]))
 
     def test_answering_all_modules_is_taken_as_the_answer(self):
         brief = brief_for("all modules")
