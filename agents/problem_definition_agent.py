@@ -365,8 +365,9 @@ class ProblemDefinitionAgent:
         project = self._build_project(goal)
         stakeholder = self._build_stakeholder(goal, clarifying_questions,
                                               soft_clarifications)
-        analysis_request = self._build_analysis_request(goal, user_question,
-                                                       clarifying_questions)
+        analysis_request = self._build_analysis_request(
+            goal, user_question, clarifying_questions, soft_clarifications,
+            has_sources=bool(sources))
         time_window = self._build_time_window(goal, clarifying_questions,
                                               soft_clarifications)
         comparison = self._build_comparison(goal)
@@ -473,7 +474,13 @@ class ProblemDefinitionAgent:
             "success_criteria": success_criteria,
             "deliverables": deliverables,
             "reporting_frequency": reporting_frequency,
-            "clarifying_questions": self._unique(clarifying_questions + soft_clarifications),
+            # Only what actually needs answering. These two used to be merged
+            # here, so a run blocked on one real question displayed nine items —
+            # eight of them assumptions this agent had already made and resolved
+            # ("recorded as 'operator'", "reporting on the whole history"). An
+            # operator reading that cannot tell which one is stopping the run.
+            "clarifying_questions": self._unique(clarifying_questions),
+            "assumptions": self._unique(soft_clarifications),
             "soft_clarifications": self._unique(soft_clarifications),
             "handoff_notes": self._unique(handoff_notes),
             "conversation_history": conversation_history,
@@ -546,6 +553,8 @@ class ProblemDefinitionAgent:
         goal: Mapping[str, Any],
         user_question: str,
         clarifying_questions: List[str],
+        soft_clarifications: List[str],
+        has_sources: bool = False,
     ) -> JsonDict:
         request = goal.get("analysis_request") or {}
         if not isinstance(request, Mapping):
@@ -554,7 +563,17 @@ class ProblemDefinitionAgent:
         raw_problem = self._as_nonblank_string(request.get("business_problem"))
         if not raw_problem and user_question:
             raw_problem = user_question
-        if not raw_problem:
+        if not raw_problem and has_sources:
+            # Nothing was typed, but a workbook is here. The questions are
+            # derived from its columns anyway, so there is a real report to
+            # write — asking for a business problem first only stops an
+            # operator who uploaded a sheet and pressed run, which is the
+            # ordinary way to use this.
+            raw_problem = ("Review institute performance across the areas "
+                           "this data supports.")
+            soft_clarifications.append(
+                "No question asked; reporting on everything the upload supports.")
+        elif not raw_problem:
             clarifying_questions.append("What business problem should this analysis solve?")
 
         analysis_types = self._clean_string_list(request.get("analysis_type"))
