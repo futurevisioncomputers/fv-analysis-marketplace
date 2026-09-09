@@ -46,7 +46,8 @@ MAX_SEGMENTS_PER_DIMENSION = 25
 #   kind  : "rate" | "sum" | "mean" | "count"
 #   roles : canonical column role(s) the metric needs (besides event_date).
 #   flag  : for "rate", the boolean column whose True-rate is the metric.
-# Metrics not listed fall back to a plain record count.
+# A metric not listed here cannot be computed and blocks its question. It must
+# never silently become a record count — see the guard in `run`.
 METRIC_SPECS: Dict[str, JsonDict] = {
     # admissions
     "admission_conversion_rate": {"kind": "rate", "flag": "is_admitted"},
@@ -179,7 +180,19 @@ class AnalystAgent:
             metric, spec = self._generic_metric(df, roles)
         else:
             metric = self._pick_metric(analysis_brief)
-            spec = METRIC_SPECS.get(metric, {"kind": "count"})
+            if metric not in METRIC_SPECS and metric != "record_count":
+                # An unlisted metric used to fall through to a plain record
+                # count. That did not fail — it answered. A sheet with no
+                # ratings column reported "Average Rating 1,515", which is the
+                # row count wearing the label of a metric this data cannot
+                # produce. A number nobody can trace back to a column is worse
+                # than a gap, so the question is blocked instead.
+                return self._blocked(
+                    f"Metric {metric!r} is not computable from this data: no "
+                    "column in the uploaded file measures it, and this metric "
+                    "has no definition in the pipeline."
+                )
+            spec = METRIC_SPECS[metric] if metric in METRIC_SPECS else {"kind": "count"}
 
         # Restrict to the requested time window if one is given.
         df, window_note = self._apply_time_window(df, analysis_brief.get("time_window"))
@@ -194,16 +207,41 @@ class AnalystAgent:
             )
 
         headline = self._headline(metric, kind, series, denom)
-        dims = (self._generic_dimensions(df, roles, exclude=spec.get("role"))
-                if generic else self._resolve_dimensions(analysis_brief, roles, df))
-        breakdowns = self._breakdowns(df, series, kind, dims, headline["value"], denom)
-        comparisons = self._comparisons(
-            df, series, kind, analysis_brief.get("comparison"), denom
-        )
-        drivers = self._drivers(comparisons, breakdowns, headline["value"])
-        caveats = self._caveats(
-            series, breakdowns, comparisons, window_note, kind
-        )
+
+        # A rate whose flag never varies carries no comparative information.
+        # An admissions export where every row is admitted gives a 100%
+        # conversion rate — true, but every segment is then also 100%, so a
+        # breakdown draws six identical bars and the insight layer reads a
+        # difference off them ("yash performs 1.8x the institute average") that
+        # does not exist. State the rate; refuse to slice a constant.
+        observed = series.dropna()
+        degenerate = (kind == "rate" and len(observed) > 0
+                      and observed.nunique() <= 1)
+
+        if degenerate:
+            dims, breakdowns, comparisons, drivers = [], [], [], []
+            only = float(observed.iloc[0])
+            caveats = [
+                f"Every row in this file has the same {metric} outcome "
+                f"({'yes' if only else 'no'}), so the rate is "
+                f"{only:.0%} everywhere. It cannot be broken down by branch, "
+                "course or faculty, and no segment out- or under-performs "
+                "another. To compare segments the file needs rows on both "
+                "sides of the outcome."
+            ]
+            if window_note:
+                caveats.append(window_note)
+        else:
+            dims = (self._generic_dimensions(df, roles, exclude=spec.get("role"))
+                    if generic else self._resolve_dimensions(analysis_brief, roles, df))
+            breakdowns = self._breakdowns(df, series, kind, dims, headline["value"], denom)
+            comparisons = self._comparisons(
+                df, series, kind, analysis_brief.get("comparison"), denom
+            )
+            drivers = self._drivers(comparisons, breakdowns, headline["value"])
+            caveats = self._caveats(
+                series, breakdowns, comparisons, window_note, kind
+            )
 
         return {
             "status": "ready",
