@@ -442,3 +442,110 @@ def data_needs(brief: Mapping[str, Any],
         "missing_data": sorted(wanted.values(),
                                key=lambda w: (-len(w["unlocks"]), w["role"])),
     }
+
+
+# =========================================================== data-first shape
+
+# Dimension roles worth breaking a metric down by, best first. A dimension the
+# upload does not carry is not offered: asking for "fee collected by payment
+# mode" against a sheet with no payment-mode column produces one bar labelled
+# "unknown", which reads as a finding and is not one.
+DIMENSION_ROLES = ("branch", "course_category", "course", "faculty", "source",
+                   "city", "payment_mode", "status", "segment")
+
+# What each metric is actually asking, in the operator's words. Used to write a
+# question the data can answer, instead of filtering a fixed list of questions
+# it mostly cannot. Only metrics worth a section of a report appear here; the
+# rest stay available as supporting metrics without generating a heading.
+METRIC_QUESTIONS: Dict[str, str] = {
+    "admission_conversion_rate": "What share of enquiries convert to admissions, and where is conversion strongest?",
+    "counselling_to_admission_rate": "Which counsellors convert the most enquiries into admissions?",
+    "admissions_confirmed": "How many admissions were confirmed, and where?",
+    "total_leads": "How many leads arrived, and through which sources?",
+    "qualified_leads": "How many leads qualified, and where do they come from?",
+    "enquiry_backlog_rate": "Which enquiries are going stale without a decision?",
+    "lead_to_admission_days": "How long does an enquiry take to become an admission?",
+    "gross_fee_collected": "How much fee was collected, and by which branch and course?",
+    "pending_fee": "How much fee is still pending, and who is carrying it?",
+    "overdue_fee": "How much fee is overdue, and where is the risk concentrated?",
+    "collection_efficiency": "What share of billed fee is actually collected?",
+    "default_rate": "Which segments carry the highest share of unpaid balances?",
+    "average_fee_per_student": "What is the average fee per student across branches and courses?",
+    "completion_rate": "Which courses, faculty and branches complete best?",
+    "dropout_rate": "Where are students dropping out before completing?",
+    "not_coming_rate": "Which students have stopped attending, and from where?",
+    "churn_rate": "Which students have churned, measured against their course window?",
+    "repeat_enrollment_rate": "How many students enrol more than once?",
+    "certificate_pending_rate": "What share of certificates is still pending?",
+    "certificate_issue_lag_days": "How long do certificates take to issue after completion?",
+    "duplicate_certificate_rate": "Are any certificate numbers duplicated?",
+}
+
+# Which module a generated question belongs to, so the rest of the brief
+# (decision supported, expected datasets) keeps working unchanged.
+METRIC_MODULES: Dict[str, str] = {
+    "admission_conversion_rate": "admissions",
+    "admissions_confirmed": "admissions",
+    "total_leads": "admissions",
+    "qualified_leads": "admissions",
+    "counselling_to_admission_rate": "counselling",
+    "enquiry_backlog_rate": "counselling",
+    "lead_to_admission_days": "counselling",
+    "gross_fee_collected": "fee_management",
+    "pending_fee": "fee_management",
+    "overdue_fee": "fee_management",
+    "collection_efficiency": "fee_management",
+    "default_rate": "fee_management",
+    "average_fee_per_student": "fee_management",
+    "completion_rate": "courses",
+    "dropout_rate": "courses",
+    "not_coming_rate": "courses",
+    "churn_rate": "courses",
+    "repeat_enrollment_rate": "courses",
+    "certificate_pending_rate": "certificates",
+    "certificate_issue_lag_days": "certificates",
+    "duplicate_certificate_rate": "certificates",
+}
+
+
+def computable_metrics(roles: Mapping[str, List[str]]) -> List[str]:
+    """Every metric these columns can actually produce, in report order.
+
+    The inverse of the usual flow. Stage 1 frames questions from the operator's
+    words and the pipeline discovers at stage 4 which of them the data cannot
+    answer — so a run over an enquiry export asks about certificates, fees and
+    ratings, and reports six skipped questions and a fabricated rating.
+    Starting from the columns means a question is only asked when its answer
+    exists.
+    """
+    ordered = list(METRIC_QUESTIONS)          # stable, report-meaningful order
+    return [metric for metric in ordered
+            if metric_capability(metric, roles).get("available")]
+
+
+def available_dimensions(roles: Mapping[str, List[str]]) -> List[str]:
+    """Dimension roles this upload carries, best first."""
+    return [role for role in DIMENSION_ROLES if role in roles]
+
+
+def derive_questions(sources: Sequence[Mapping[str, Any]],
+                     limit: Optional[int] = None) -> List[JsonDict]:
+    """Business questions this data can answer, derived from its columns.
+
+    Each entry is `{metric, module, question, dimensions}` — enough for the
+    Problem Definition agent to build a full question record without inventing
+    a metric the Analyst will later refuse.
+    """
+    roles = available_roles(sources)
+    dimensions = available_dimensions(roles)
+    out: List[JsonDict] = []
+    for metric in computable_metrics(roles):
+        out.append({
+            "metric": metric,
+            "module": METRIC_MODULES.get(metric, "admissions"),
+            "question": METRIC_QUESTIONS[metric],
+            "dimensions": list(dimensions),
+        })
+        if limit and len(out) >= limit:
+            break
+    return out

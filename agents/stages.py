@@ -221,7 +221,10 @@ def _plural(n: int, word: str) -> str:
 def run_problem(session: Session) -> JsonDict:
     """Stage 1 — scope the request into modules, questions, and KPI targets."""
     payload = session.state.get("goal") or session.state.get("question") or ""
-    brief = ProblemDefinitionAgent().run(payload)
+    # The sources are passed so the questions come from the columns this upload
+    # actually has, rather than the fixed per-module bank. Stage 1 reads headers
+    # and a small sample only — it does not load a frame.
+    brief = ProblemDefinitionAgent().run(payload, sources=session.sources())
     status = brief.get("status")
     if status in ("blocked", "needs_clarification"):
         raise StageBlocked("problem",

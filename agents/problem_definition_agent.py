@@ -334,8 +334,16 @@ class ProblemDefinitionAgent:
 
         self.catalog = catalog
 
-    def run(self, payload: Any) -> JsonDict:
-        """Normalize an incoming user request into a ProblemDefinitionBrief."""
+    def run(self, payload: Any, sources: Optional[Sequence[Mapping[str, Any]]] = None) -> JsonDict:
+        """Normalize an incoming user request into a ProblemDefinitionBrief.
+
+        Args:
+            payload: the operator's request (a /goal dict, or free text).
+            sources: the uploaded sheets, when they are known. Given them, the
+                questions are derived from the columns the upload actually has
+                instead of the fixed per-module bank. Optional, so a caller with
+                no data yet still gets a brief.
+        """
 
         request = self._coerce_payload(payload)
         user_question = str(request.get("user_question") or "").strip()
@@ -381,6 +389,7 @@ class ProblemDefinitionAgent:
             time_window=time_window,
             comparison=comparison,
             user_question=user_question,
+            sources=sources,
         )
 
         hypotheses = self._build_hypotheses(goal, risks, alerts)
@@ -715,6 +724,7 @@ class ProblemDefinitionAgent:
         time_window: Mapping[str, str],
         comparison: Mapping[str, str],
         user_question: str = "",
+        sources: Optional[Sequence[Mapping[str, Any]]] = None,
     ) -> List[JsonDict]:
         provided_questions = self._clean_string_list(goal.get("business_questions"))
         questions: List[JsonDict] = []
@@ -758,6 +768,34 @@ class ProblemDefinitionAgent:
                 )
             )
 
+        # Derived from the columns when the upload is known, from the module
+        # bank when it is not.
+        #
+        # The bank asks the same twenty questions of every sheet, so an enquiry
+        # export was asked about certificates, fees and ratings and answered
+        # with six skips and one fabricated rating. Reading the columns first
+        # means each question is one this data can answer — and the questions
+        # shrink or grow with the upload: fifteen when the admissions and
+        # enquiries workbooks arrive together, six from enquiries alone.
+        derived = self._derived_questions(sources, enabled_modules)
+        if derived is not None:
+            for spec in derived:
+                questions.append(
+                    self._question_record(
+                        question_id=f"BQ-{len(questions) + 1:03d}",
+                        module_name=spec["module"],
+                        question=spec["question"],
+                        modules=modules,
+                        analysis_type=default_analysis_type,
+                        priority=priority,
+                        time_window=time_window,
+                        comparison=comparison,
+                        metrics=[spec["metric"]],
+                        dimensions=spec["dimensions"],
+                    )
+                )
+            return questions
+
         for module_name in enabled_modules:
             for question in MODULE_DEFINITIONS[module_name]["questions"]:
                 questions.append(
@@ -775,6 +813,35 @@ class ProblemDefinitionAgent:
 
         return questions
 
+    def _derived_questions(
+        self,
+        sources: Optional[Sequence[Mapping[str, Any]]],
+        enabled_modules: Sequence[str],
+    ) -> Optional[List[JsonDict]]:
+        """Questions the uploaded columns can answer, or None to use the bank.
+
+        None rather than an empty list is deliberate: "no sources given" and
+        "sources given, nothing computable" are different, and only the first
+        should fall back to asking the generic questions. Reading the columns
+        is best-effort — a source this cannot sample must not take stage 1 down,
+        because the bank still produces a usable brief.
+        """
+        if not sources:
+            return None
+        try:
+            from . import capability
+            derived = capability.derive_questions(sources)
+        except Exception:                                    # noqa: BLE001
+            return None
+        if not derived:
+            return None
+        allowed = set(enabled_modules)
+        scoped = [d for d in derived if d["module"] in allowed]
+        # Every computable metric fell outside the operator's chosen scope.
+        # Honour the scope and let the bank speak for it rather than silently
+        # widening what was asked for.
+        return scoped or None
+
     def _question_record(
         self,
         question_id: str,
@@ -786,11 +853,18 @@ class ProblemDefinitionAgent:
         time_window: Mapping[str, str],
         comparison: Mapping[str, str],
         steer_text: str = "",
+        metrics: Optional[Sequence[str]] = None,
+        dimensions: Optional[Sequence[str]] = None,
     ) -> JsonDict:
         module_config = modules[module_name]
-        metrics = list(module_config["metrics"])
-        dimensions = list(module_config["dimensions"])
-        if steer_text:
+        # A derived question already names the one metric it was built from and
+        # the dimensions the upload carries. Keyword steering would only dilute
+        # that with metrics the columns cannot support.
+        explicit = metrics is not None
+        metrics = list(metrics) if explicit else list(module_config["metrics"])
+        dimensions = (list(dimensions) if dimensions is not None
+                      else list(module_config["dimensions"]))
+        if steer_text and not explicit:
             metrics = self._steer_metrics(steer_text, metrics)
             dimensions = self._steer_dimensions(steer_text, dimensions)
         return {
