@@ -360,7 +360,17 @@ class EDAAgent:
     ) -> List[JsonDict]:
         if len(df) < MIN_ROWS_FOR_CROSSTAB:
             return []
-        cols = list(dimension_cols.items())
+        # Two roles can resolve to the SAME column — `status` and `fee_status`
+        # both landed on `fee_status` on a real institute upload. Pairing those
+        # asks whether a column is associated with itself: the answer is always
+        # yes, and getting there crashes, because `df[[c, c]]` is a frame with a
+        # duplicate label and `sub[c]` is then 2-D, not a Series. One entry per
+        # distinct column, first role wins the label.
+        seen: Dict[str, str] = {}
+        for role, col in dimension_cols.items():
+            seen.setdefault(col, role)
+        cols = [(role, col) for col, role in seen.items()]
+
         results: List[JsonDict] = []
         for i in range(len(cols)):
             for j in range(i + 1, len(cols)):
